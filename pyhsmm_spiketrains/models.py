@@ -56,7 +56,7 @@ class _PoissonMixtureMixin(pybasicbayes.models.Mixture):
             self._clear_caches()
 
 ### Special case the Poisson states to use Cython-ized stat calculations
-class PoissonHMMStates(pyhsmm.models.WeakLimitHDPHMM._states_class):
+class PoissonStates(pyhsmm.internals.hmm_states._StatesBase):
     ### speeding up likelihood calculation
     @property
     def aBl(self):
@@ -88,9 +88,14 @@ class PoissonHMMStates(pyhsmm.models.WeakLimitHDPHMM._states_class):
         fast_statistics(self.stateseq,self.data,ns,tots)
         return (ns,tots)
 
+class PoissonHMMStates(PoissonStates, pyhsmm.models.HMM._states_class):
+    pass
+
+class PoissonHSMMStates(PoissonStates, pyhsmm.models.HSMM._states_class):
+    pass
+
 ### Special case resampling Poisson observation distributions
-class _PoissonHMMMixin(pyhsmm.models._HMMGibbsSampling):
-    _states_class = PoissonHMMStates
+class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
 
     ### speeding up obs resampling
     def resample_obs_distns(self):
@@ -101,13 +106,13 @@ class _PoissonHMMMixin(pyhsmm.models._HMMGibbsSampling):
                 o.resample(n=n,tots=tots)
             self._clear_caches()
         else:
-            super(_PoissonHMMMixin,self).resample_obs_distns()
+            super(_PoissonMixin,self).resample_obs_distns()
 
         # Resample hypers
         # self.resample_obs_hypers()
 
     def slow_resample_obs_distns(self):
-        super(_PoissonHMMMixin,self).resample_obs_distns()
+        super(_PoissonMixin,self).resample_obs_distns()
 
         # Resample hypers
         self.resample_obs_hypers()
@@ -203,6 +208,13 @@ class _PoissonHMMMixin(pyhsmm.models._HMMGibbsSampling):
         for o in self.obs_distns:
             o.hypers = (a_f,b_f)
 
+### Special case resampling Poisson observation distributions
+class _PoissonHMMMixin(pyhsmm.models._HMMGibbsSampling):
+    _states_class = PoissonHMMStates
+
+class _PoissonHSMMMixin(pyhsmm.models._HMMGibbsSampling):
+    _states_class = PoissonHSMMStates
+
 ### Now create Poisson versions of the Mixture, DP-Mixture, HMM, HDP-HMM, HSMM, and HDP-HSMM
 def _make_obs_distns(K, N, alpha_obs, beta_obs):
     obs_distns = []
@@ -245,14 +257,14 @@ class PoissonHDPHMM(_PoissonHMMMixin, pyhsmm.models.WeakLimitHDPHMM):
             obs_distns=_make_obs_distns(K_max, N, alpha_obs, beta_obs), **kwargs)
 
 
-class PoissonHSMM(_PoissonHMMMixin, pyhsmm.models.HSMM):
+class PoissonHSMM(_PoissonHSMMMixin, pyhsmm.models.HSMM):
     # TODO: Override PoissonHMMMixin to use HSMMStates
     def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0, **kwargs):
         super(PoissonHSMM, self).__init__(
             obs_distns=_make_obs_distns(K, N, alpha_obs, beta_obs), **kwargs)
 
 
-class PoissonHDPHSMM(_PoissonHMMMixin, pyhsmm.models.WeakLimitHDPHSMM):
+class PoissonHDPHSMM(_PoissonHSMMMixin, pyhsmm.models.WeakLimitHDPHSMM):
     def __init__(self, N, K_max, alpha_obs=1.0, beta_obs=1.0, **kwargs):
         super(PoissonHDPHSMM, self).__init__(
             obs_distns=_make_obs_distns(K_max, N, alpha_obs, beta_obs), **kwargs)
