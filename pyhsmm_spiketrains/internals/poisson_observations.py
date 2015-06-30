@@ -35,6 +35,11 @@ class PoissonVector(ProductDistribution, Collapsed):
 
         super(PoissonVector, self).__init__(self.poissons)
 
+    def log_likelihood(self,x):
+        return np.ravel(
+            sum(distn.log_likelihood(x[...,sl])
+            for distn,sl in zip(self._distns,self._slices)))
+
     @property
     def lmbdas(self):
         return np.array([p.lmbda for p in self.poissons])

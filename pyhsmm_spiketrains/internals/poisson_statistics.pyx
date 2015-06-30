@@ -6,6 +6,8 @@
 import numpy as np
 cimport numpy as np
 
+from scipy.special import gammaln
+
 from libc.stdint cimport int32_t
 from cython cimport floating, integral
 from cython.parallel import prange
@@ -42,3 +44,18 @@ def fast_statistics(
         for d in range(D):
             tots[stateseq[t],d] += data[t,d]
 
+
+# def fast_log_marginal_likelihood(floating[:,::1] gammalns,
+#                                  floating alpha_0, floating alpha_post,
+#                                  floating beta_0,  floating beta_post):
+#
+#     cdef floating lml = 0
+#     lml += (gammaln(alpha_post) - alpha_post * np.log(beta_post))
+#     lml -= (gammaln(alpha_0)    - alpha_0    * np.log(beta_0))
+#     lml += - np.sum(gammalns)
+#
+# def fast_crp_score(
+#         int t, int32_t[::1] z, integral[:,::1] data,
+#
+#     ):
+#
