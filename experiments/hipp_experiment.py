@@ -3,6 +3,9 @@ Fit a sequence of models to the rat hippocampal recordings
 """
 import os
 import time
+import gzip
+import cPickle
+
 import numpy as np
 from scipy.io import loadmat
 from collections import namedtuple
@@ -108,19 +111,37 @@ def plot_predictive_log_likelihoods(results, colors, burnin=50, baseline=0):
     # plt.legend(loc="lower right")
     plt.show()
 
+def save_git_info(output_dir):
+    import git
+    repo = git.Repo(".")
+    commit_id = str(repo.head.commit)
+
+    with open(os.path.join(output_dir, "readme.md"), "w") as f:
+        f.writelines(["git commit: ", commit_id])
+
+
 
 if __name__ == "__main__":
+    # Set output parameters
+    runnum = 1
+    output_dir = os.path.join("results", "hipp", "run%03d" % runnum)
+    assert os.path.exists(output_dir)
+
+    # Before running the experiment, save a file to specify the Git commit id
+    save_git_info(output_dir)
+
     # Load the data
     N, S_train, pos_train, S_test, pos_test = load_rat_data()
 
     # Model dimensions
-    Ks = np.arange(5, 15, step=5)
+    Ks = np.arange(5, 55, step=5)
 
     # Gibbs iterations
     N_iter = 100
 
     # Define a sequence of models
     names_list = []
+    fnames_list = []
     class_list = []
     args_list  = []
     color_list = []
@@ -135,6 +156,7 @@ if __name__ == "__main__":
     # Mixture Models
     for K in Ks:
         names_list.append("Mixture (K=%d)" % K)
+        fnames_list.append("mixture_K%d" % K)
         class_list.append(pyhsmm_spiketrains.models.PoissonMixture)
         args_list.append({"K": K, "alpha_0": 10.0})
         color_list.append(allcolors[0])
@@ -147,32 +169,53 @@ if __name__ == "__main__":
     # HMMs
     for K in Ks:
         names_list.append("HMM (K=%d)" % K)
+        fnames_list.append("hmm_K%d" % K)
         class_list.append(pyhsmm_spiketrains.models.PoissonHMM)
         args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.})
         color_list.append(allcolors[1])
 
     # HSMMs
     for K in Ks:
-        dur_hypers = {"alpha_0": 10.*3, "beta_0": 10.}
+        avg_dur = 1./0.25
+        dur_hypers = {"alpha_0": 2*avg_dur, "beta_0": 2.}
         dur_distns = [pyhsmm.distributions.PoissonDuration(**dur_hypers) for _ in range(K)]
+
         names_list.append("HSMM (K=%d)" % K)
+        fnames_list.append("hsmm_K%d" % K)
         class_list.append(pyhsmm_spiketrains.models.PoissonHSMM)
         args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.,
                           "dur_distns": dur_distns})
-        color_list.append(allcolors[1])
+        color_list.append(allcolors[2])
 
 
     results_list = []
-    for model_name, model_class, model_args in zip(names_list, class_list, args_list):
+    for model_name, model_fname, model_class, model_args in \
+            zip(names_list, fnames_list, class_list, args_list):
         print "Model: ", model_name
+        print "File:  ", model_fname
         print "Class: ", model_class
         print "Args:  "
         print model_args
         print ""
 
-        model = model_class(N, alpha_obs=1.0, beta_obs=1.0, **model_args)
-        model.add_data(S_train)
-        results_list.append(fit(model_name, model, S_test, N_iter=N_iter))
+        output_file = os.path.join(output_dir, model_fname + ".pkl.gz")
+
+        # Check for existing results
+        if os.path.exists(output_file):
+            print "Loading results from: ", output_file
+            with gzip.open(output_file, "r") as f:
+                res = cPickle.load(f)
+
+        else:
+            model = model_class(N, alpha_obs=1.0, beta_obs=1.0, **model_args)
+            model.add_data(S_train)
+            res = fit(model_name, model, S_test, N_iter=N_iter)
+            results_list.append(res)
+
+            # Save results
+            with gzip.open(output_file, "w") as f:
+                print "Saving results to: ", output_file
+                cPickle.dump(res, f, protocol=-1)
 
     # Plot
     plot_predictive_log_likelihoods(results_list, color_list, baseline=homog_ll)
