@@ -210,12 +210,14 @@ if __name__ == "__main__":
             model = model_class(N, alpha_obs=1.0, beta_obs=1.0, **model_args)
             model.add_data(S_train)
             res = fit(model_name, model, S_test, N_iter=N_iter)
-            results_list.append(res)
 
             # Save results
             with gzip.open(output_file, "w") as f:
                 print "Saving results to: ", output_file
                 cPickle.dump(res, f, protocol=-1)
 
+        results_list.append(res)
+
+    # Plot
     # Plot
     plot_predictive_log_likelihoods(results_list, color_list, baseline=homog_ll)
