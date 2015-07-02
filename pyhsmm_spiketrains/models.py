@@ -110,15 +110,17 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
 
         # Resample hypers
         # self.resample_obs_hypers()
+        self.resample_obs_scale()
 
     def slow_resample_obs_distns(self):
         super(_PoissonMixin,self).resample_obs_distns()
 
         # Resample hypers
-        self.resample_obs_hypers()
+        # self.resample_obs_hypers()
+        self.resample_obs_scale()
 
     ### resampling observation hypers
-    def resample_obs_hypers(self):
+    def resample_obs_hypers_hmc(self):
         """
         Sample the parameters of a gamma prior given firing rates L
 
@@ -208,11 +210,46 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
         for o in self.obs_distns:
             o.hypers = (a_f,b_f)
 
+    def resample_obs_scale(self):
+        """
+        Resample the scale of the gamma prior on firing rates
+        p(\lam | a, b) = Gamma(\lam | a, b)
+                       = b^a / G(a) \lam^{a-1} e^{-b\lam}
+
+        p(b | c, d) = Gamma(b | c, d)
+                    = d^c/ G(c) b^{c-1} e^{-db}
+
+        p( b | lam, a, c, d)
+                    = b^a e^{-b \lam} b^{c-1} e^{-db}
+                    = b^{a + c - 1} e^{-b * (d+lam)}
+        :return:
+        """
+        assert all(map(lambda o: isinstance(o, PoissonVector),
+                       self.obs_distns))
+        N = self.obs_distns[0].N
+        a, b = self.obs_distns[0].hypers
+        c, d = 1., 1.
+        L = np.array([o.lmbdas for o in self.obs_distns])
+        used = self.state_usages > 0
+        for n in xrange(N):
+            # Rates of neuron n over all states
+            Ln = L[:,n]
+
+            # Posterior parameters (only consider states that are used)
+            c_post = c + used.sum()*a[n]
+            d_post = d + (Ln * used).sum()
+
+            # Sample and set
+            bn = np.random.gamma(c_post, 1./d_post)
+            for o in self.obs_distns:
+                o.beta_0[n] = bn
+
+
 ### Special case resampling Poisson observation distributions
-class _PoissonHMMMixin(pyhsmm.models._HMMGibbsSampling):
+class _PoissonHMMMixin(_PoissonMixin):
     _states_class = PoissonHMMStates
 
-class _PoissonHSMMMixin(pyhsmm.models._HMMGibbsSampling):
+class _PoissonHSMMMixin(_PoissonMixin):
     _states_class = PoissonHSMMStates
 
 ### Now create Poisson versions of the Mixture, DP-Mixture, HMM, HDP-HMM, HSMM, and HDP-HSMM
@@ -221,7 +258,6 @@ def _make_obs_distns(K, N, alpha_obs, beta_obs):
     for k in range(K):
         obs_distns.append(PoissonVector(N, alpha_0=alpha_obs, beta_0=beta_obs))
     return obs_distns
-
 
 class PoissonMixture(_PoissonMixtureMixin, pybasicbayes.models.Mixture):
     def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0, **kwargs):

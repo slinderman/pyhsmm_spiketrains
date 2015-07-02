@@ -98,17 +98,31 @@ def plot_predictive_log_likelihoods(results, colors, burnin=50, baseline=0):
     for res, color in zip(results, colors):
         plt.plot(res.timestamps, res.predictive_lls, color=color, label=res.name)
 
-    plt.legend(loc="lower right")
+    plt.xlabel("time (s)")
+    plt.ylabel("predictive log lkhd")
+    # plt.legend(loc="lower right")
 
     plt.subplot(122)
+    min_pll = np.inf
+    max_pll = -np.inf
     for i, (res, color) in enumerate(zip(results, colors)):
         plls = np.array(res.predictive_lls[burnin:])
-        plt.bar(i, plls.mean() - baseline,
-                yerr=plls.std(),
+        y = plls.mean() - baseline
+        yerr = plls.std()
+        plt.bar(i, y,
+                yerr=yerr,
                 width=0.9, color=color, ecolor='k',
                 label=res.name)
 
+        min_pll = min(min_pll, y)
+        max_pll = max(max_pll, y)
+
     # plt.legend(loc="lower right")
+    plt.xlabel("model")
+    plt.xticks([])
+    plt.ylabel("predictive log lkhd")
+    plt.ylim(min_pll - 0.1 * (max_pll-min_pll),
+             max_pll + 0.1 * (max_pll-min_pll))
     plt.show()
 
 def save_git_info(output_dir):
@@ -123,7 +137,7 @@ def save_git_info(output_dir):
 
 if __name__ == "__main__":
     # Set output parameters
-    runnum = 1
+    runnum = 2
     output_dir = os.path.join("results", "hipp", "run%03d" % runnum)
     assert os.path.exists(output_dir)
 
@@ -174,19 +188,47 @@ if __name__ == "__main__":
         args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.})
         color_list.append(allcolors[1])
 
+    # HDP-HMM
+    names_list.append("HDP-HMM")
+    fnames_list.append("hdp_hmm")
+    class_list.append(pyhsmm_spiketrains.models.PoissonHDPHMM)
+    args_list.append({"K_max": 50,
+                      "alpha_a_0": 10.0, "alpha_b_0": 1.0,
+                      # "alpha": 10.0,
+                      "gamma_a_0": 8.0, "gamma_b_0": 1.0,
+                      # "gamma": 8.0,
+                      "init_state_concentration": 1.})
+    color_list.append(allcolors[2])
+
     # HSMMs
-    for K in Ks:
-        avg_dur = 1./0.25
-        dur_hypers = {"alpha_0": 2*avg_dur, "beta_0": 2.}
-        dur_distns = [pyhsmm.distributions.PoissonDuration(**dur_hypers) for _ in range(K)]
-
-        names_list.append("HSMM (K=%d)" % K)
-        fnames_list.append("hsmm_K%d" % K)
-        class_list.append(pyhsmm_spiketrains.models.PoissonHSMM)
-        args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.,
-                          "dur_distns": dur_distns})
-        color_list.append(allcolors[2])
-
+    # for K in Ks:
+    #     avg_dur = 1./0.25
+    #     dur_hypers = {"alpha_0": 2*avg_dur, "beta_0": 2.}
+    #     dur_distns = [pyhsmm.distributions.PoissonDuration(**dur_hypers) for _ in range(K)]
+    #
+    #     names_list.append("HSMM (K=%d)" % K)
+    #     fnames_list.append("hsmm_K%d" % K)
+    #     class_list.append(pyhsmm_spiketrains.models.PoissonHSMM)
+    #     args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.,
+    #                       "dur_distns": dur_distns})
+    #     color_list.append(allcolors[3])
+    #
+    # # HDP-HSMM
+    # names_list.append("HDP-HSMM")
+    # fnames_list.append("hdp_hsmm")
+    # class_list.append(pyhsmm_spiketrains.models.PoissonHDPHSMM)
+    # avg_dur = 1./0.25
+    # dur_hypers = {"alpha_0": 2*avg_dur, "beta_0": 2.}
+    # dur_distns = [pyhsmm.distributions.PoissonDuration(**dur_hypers) for _ in range(100)]
+    #
+    # args_list.append({"K_max": 100,
+    #                   # "alpha_a_0": 1.0, "alpha_b_0": 1.0,
+    #                   "alpha": 10.0,
+    #                   # "gamma_a_0": 8.0, "gamma_b_0": 1.0,
+    #                   "gamma": 8.0,
+    #                   "init_state_concentration": 1.,
+    #                   "dur_distns": dur_distns})
+    # color_list.append(allcolors[4])
 
     results_list = []
     for model_name, model_fname, model_class, model_args in \
@@ -197,7 +239,6 @@ if __name__ == "__main__":
         print "Args:  "
         print model_args
         print ""
-
         output_file = os.path.join(output_dir, model_fname + ".pkl.gz")
 
         # Check for existing results
@@ -218,6 +259,5 @@ if __name__ == "__main__":
 
         results_list.append(res)
 
-    # Plot
     # Plot
     plot_predictive_log_likelihoods(results_list, color_list, baseline=homog_ll)
