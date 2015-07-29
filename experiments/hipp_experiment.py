@@ -18,6 +18,7 @@ allcolors = brewer2mpl.get_map("Set1", "Qualitative", 9).mpl_colors
 
 import pyhsmm
 import pyhsmm_spiketrains.models
+reload(pyhsmm_spiketrains.models)
 
 # Set the seed
 seed = np.random.randint(0, 2**16)
@@ -151,7 +152,7 @@ if __name__ == "__main__":
     Ks = np.arange(5, 55, step=5)
 
     # Gibbs iterations
-    N_iter = 100
+    N_iter = 1000
 
     # Define a sequence of models
     names_list = []
@@ -192,28 +193,26 @@ if __name__ == "__main__":
     names_list.append("HDP-HMM")
     fnames_list.append("hdp_hmm")
     class_list.append(pyhsmm_spiketrains.models.PoissonHDPHMM)
-    args_list.append({"K_max": 50,
-                      "alpha_a_0": 10.0, "alpha_b_0": 1.0,
-                      # "alpha": 10.0,
-                      "gamma_a_0": 8.0, "gamma_b_0": 1.0,
-                      # "gamma": 8.0,
+    args_list.append({"K_max": 100,
+                      # "alpha_a_0": 10.0, "alpha_b_0": 1.0,
+                      "alpha": 10.0,
+                      # "gamma_a_0": 100.0, "gamma_b_0": 1.0,
+                      "gamma": 500.0,
                       "init_state_concentration": 1.})
     color_list.append(allcolors[2])
 
     # HSMMs
-    # for K in Ks:
-    #     avg_dur = 1./0.25
-    #     dur_hypers = {"alpha_0": 2*avg_dur, "beta_0": 2.}
-    #     dur_distns = [pyhsmm.distributions.PoissonDuration(**dur_hypers) for _ in range(K)]
-    #
-    #     names_list.append("HSMM (K=%d)" % K)
-    #     fnames_list.append("hsmm_K%d" % K)
-    #     class_list.append(pyhsmm_spiketrains.models.PoissonHSMM)
-    #     args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.,
-    #                       "dur_distns": dur_distns})
-    #     color_list.append(allcolors[3])
-    #
-    # # HDP-HSMM
+    for K in Ks:
+        avg_dur = 1./0.25
+        names_list.append("HSMM (K=%d)" % K)
+        fnames_list.append("hsmm_K%d" % K)
+        class_list.append(pyhsmm_spiketrains.models.PoissonHSMMIntNegBinDuration)
+        args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.,
+                          "r_max": 10, "alpha_dur": 2*avg_dur, "beta_dur": 2.})
+
+        color_list.append(allcolors[3])
+
+    # HDP-HSMM
     # names_list.append("HDP-HSMM")
     # fnames_list.append("hdp_hsmm")
     # class_list.append(pyhsmm_spiketrains.models.PoissonHDPHSMM)

@@ -94,6 +94,9 @@ class PoissonHMMStates(PoissonStates, pyhsmm.models.HMM._states_class):
 class PoissonHSMMStates(PoissonStates, pyhsmm.models.HSMM._states_class):
     pass
 
+class PoissonIntNegBinHSMMStates(PoissonStates, pyhsmm.models.HSMMIntNegBin._states_class):
+    pass
+
 ### Special case resampling Poisson observation distributions
 class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
 
@@ -252,6 +255,9 @@ class _PoissonHMMMixin(_PoissonMixin):
 class _PoissonHSMMMixin(_PoissonMixin):
     _states_class = PoissonHSMMStates
 
+class _PoissonIntNegBinHSMMMixin(_PoissonMixin):
+    _states_class = PoissonIntNegBinHSMMStates
+
 ### Now create Poisson versions of the Mixture, DP-Mixture, HMM, HDP-HMM, HSMM, and HDP-HSMM
 def _make_obs_distns(K, N, alpha_obs, beta_obs):
     obs_distns = []
@@ -298,6 +304,41 @@ class PoissonHSMM(_PoissonHSMMMixin, pyhsmm.models.HSMM):
     def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0, **kwargs):
         super(PoissonHSMM, self).__init__(
             obs_distns=_make_obs_distns(K, N, alpha_obs, beta_obs), **kwargs)
+
+
+class PoissonHSMMPoissonDuration(_PoissonHSMMMixin, pyhsmm.models.HSMM):
+    def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0,
+                 alpha_dur=1.0, beta_dur=1.0, **kwargs):
+
+        # Instantiate Poisson duration distributions
+        duration_distns = [
+            pyhsmm.distributions.PoissonDuration(
+                alpha_0=alpha_dur, beta_0=beta_dur)
+            for _ in range(K)]
+
+
+        super(PoissonHSMMPoissonDuration, self).__init__(
+            obs_distns=_make_obs_distns(K, N, alpha_obs, beta_obs),
+            dur_distns=duration_distns,
+            **kwargs)
+
+
+class PoissonHSMMIntNegBinDuration(_PoissonIntNegBinHSMMMixin, pyhsmm.models.HSMMIntNegBin):
+    def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0,
+                 r_max=10, alpha_dur=10.0, beta_dur=1.0,
+                 **kwargs):
+
+        # Instantiate Poisson duration distributions
+        duration_distns = [
+            pyhsmm.distributions.NegativeBinomialIntegerRDuration(
+                r_discrete_distn=np.ones(r_max), alpha_0=alpha_dur, beta_0=beta_dur)
+            for _ in range(K)]
+
+
+        super(PoissonHSMMIntNegBinDuration, self).__init__(
+            obs_distns=_make_obs_distns(K, N, alpha_obs, beta_obs),
+            dur_distns=duration_distns,
+            **kwargs)
 
 
 class PoissonHDPHSMM(_PoissonHSMMMixin, pyhsmm.models.WeakLimitHDPHSMM):
