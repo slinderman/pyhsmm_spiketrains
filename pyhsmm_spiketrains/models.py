@@ -255,7 +255,7 @@ class _PoissonHMMMixin(_PoissonMixin):
 class _PoissonHSMMMixin(_PoissonMixin):
     _states_class = PoissonHSMMStates
 
-class _PoissonIntNegBinHSMMMixin(_PoissonMixin):
+class _PoissonIntNegBinHSMMMixin(_PoissonHSMMMixin):
     _states_class = PoissonIntNegBinHSMMStates
 
 ### Now create Poisson versions of the Mixture, DP-Mixture, HMM, HDP-HMM, HSMM, and HDP-HSMM
@@ -323,6 +323,15 @@ class PoissonHSMMPoissonDuration(_PoissonHSMMMixin, pyhsmm.models.HSMM):
             **kwargs)
 
 
+    def add_data(self,data,stateseq=None,trunc=30,
+            right_censoring=True,left_censoring=False,**kwargs):
+        return super(PoissonHSMMPoissonDuration, self).\
+            add_data(data, stateseq=stateseq, trunc=trunc,
+                     right_censoring=right_censoring,
+                     left_censoring=left_censoring,
+                     **kwargs)
+
+
 class PoissonHSMMIntNegBinDuration(_PoissonIntNegBinHSMMMixin, pyhsmm.models.HSMMIntNegBin):
     def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0,
                  r_max=10, alpha_dur=10.0, beta_dur=1.0,
@@ -340,10 +349,19 @@ class PoissonHSMMIntNegBinDuration(_PoissonIntNegBinHSMMMixin, pyhsmm.models.HSM
             dur_distns=duration_distns,
             **kwargs)
 
+    def add_data(self,data,stateseq=None,trunc=30,
+            right_censoring=True,left_censoring=False,**kwargs):
+        return super(PoissonHSMMIntNegBinDuration, self).\
+            add_data(data, stateseq=stateseq, trunc=trunc,
+                     right_censoring=right_censoring,
+                     left_censoring=left_censoring,
+                     **kwargs)
+
 
 class PoissonHDPHSMM(_PoissonHSMMMixin, pyhsmm.models.WeakLimitHDPHSMM):
     def __init__(self, N, K_max, alpha_obs=1.0, beta_obs=1.0, **kwargs):
         super(PoissonHDPHSMM, self).__init__(
             obs_distns=_make_obs_distns(K_max, N, alpha_obs, beta_obs), **kwargs)
+
 
 

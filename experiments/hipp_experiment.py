@@ -8,6 +8,7 @@ import cPickle
 
 import numpy as np
 from scipy.io import loadmat
+from scipy.misc import logsumexp
 from collections import namedtuple
 
 from pybasicbayes.util.text import progprint_xrange
@@ -16,7 +17,6 @@ import matplotlib.pyplot as plt
 import brewer2mpl
 allcolors = brewer2mpl.get_map("Set1", "Qualitative", 9).mpl_colors
 
-import pyhsmm
 import pyhsmm_spiketrains.models
 reload(pyhsmm_spiketrains.models)
 
@@ -24,9 +24,6 @@ reload(pyhsmm_spiketrains.models)
 seed = np.random.randint(0, 2**16)
 print "setting seed to ", seed
 np.random.seed(seed)
-
-# Specify the rat data
-data_file = os.path.join('data','positional_data.mat')
 
 def split_train_test(S, pos, trainfrac):
     T,N = S.shape
@@ -44,13 +41,31 @@ def split_train_test(S, pos, trainfrac):
     else:
         return S_train, S_test
 
-def load_rat_data(trainfrac=0.8):
-    raw_data = loadmat(data_file)
-    data = raw_data['AllSpikeData'].astype(np.int)
+# def load_rat_data(trainfrac=0.8):
+#     raw_data = loadmat(data_file)
+#     data = raw_data['AllSpikeData'].astype(np.int)
+#
+#     # Transpose so that time is the first axis
+#     S = data.T
+#     S = np.array(S.todense())
+#
+#     # Get the time stamps
+#     T,N = S.shape
+#     dt = 0.25
+#     ts = np.arange(T) * dt
+#
+#     # Get the corresponding position
+#     pos = raw_data['rat_pos']
+#     center = raw_data['cp'].ravel()
+#     radius = np.float(raw_data['r'])
+#
+#     S_train, pos_train, S_test, pos_test = split_train_test(S, pos, trainfrac=trainfrac)
+#
+#     return N, S_train, pos_train, S_test, pos_test
 
-    # Transpose so that time is the first axis
-    S = data.T
-    S = np.array(S.todense())
+def load_hipp_data(dataname="hipp_2dtrack_b", trainfrac=0.8):
+    raw_data = loadmat("data/%s.mat" % dataname)
+    S = raw_data['S'].astype(np.int).copy("C")
 
     # Get the time stamps
     T,N = S.shape
@@ -58,11 +73,14 @@ def load_rat_data(trainfrac=0.8):
     ts = np.arange(T) * dt
 
     # Get the corresponding position
-    pos = raw_data['rat_pos']
-    center = raw_data['cp'].ravel()
-    radius = np.float(raw_data['r'])
-
+    pos = raw_data['pos']
     S_train, pos_train, S_test, pos_test = split_train_test(S, pos, trainfrac=trainfrac)
+
+    if "cp" in raw_data and "r" in raw_data:
+        center = raw_data['cp'].ravel()
+        radius = np.float(raw_data['r'])
+    else:
+        center = radius = None
 
     return N, S_train, pos_train, S_test, pos_test
 
@@ -70,7 +88,7 @@ def load_rat_data(trainfrac=0.8):
 Results = namedtuple(
     "Results", ["name", "loglikes", "predictive_lls", "samples", "timestamps"])
 
-def fit(name, model, test_data, N_iter=1000):
+def fit(name, model, test_data, N_iter=1000, init_state_seq=None):
     def evaluate(model):
         ll, pll = \
             model.log_likelihood(), \
@@ -85,6 +103,12 @@ def fit(name, model, test_data, N_iter=1000):
         timestep = time.time() - tic
         return evaluate(model), timestep
 
+    # Initialize with given state seq
+    if init_state_seq is not None:
+        model.states_list[0].stateseq = init_state_seq
+        for _ in xrange(100):
+            model.resample_obs_distns()
+
     init_val = evaluate(model)
     vals, timesteps = zip(*[sample(model) for _ in progprint_xrange(N_iter)])
 
@@ -92,6 +116,9 @@ def fit(name, model, test_data, N_iter=1000):
     timestamps = np.cumsum((0.,) + timesteps)
 
     return Results(name, lls, plls, model.copy_sample(), timestamps)
+
+def log_expected_pll(plls):
+    return -np.log(len(plls)) + logsumexp(plls)
 
 def plot_predictive_log_likelihoods(results, colors, burnin=50, baseline=0):
     plt.figure()
@@ -108,8 +135,10 @@ def plot_predictive_log_likelihoods(results, colors, burnin=50, baseline=0):
     max_pll = -np.inf
     for i, (res, color) in enumerate(zip(results, colors)):
         plls = np.array(res.predictive_lls[burnin:])
-        y = plls.mean() - baseline
-        yerr = plls.std()
+        # y = plls.mean() - baseline
+        # yerr = plls.std()
+        y = log_expected_pll(plls) - baseline
+        yerr = 0
         plt.bar(i, y,
                 yerr=yerr,
                 width=0.9, color=color, ecolor='k',
@@ -134,26 +163,7 @@ def save_git_info(output_dir):
     with open(os.path.join(output_dir, "readme.md"), "w") as f:
         f.writelines(["git commit: ", commit_id])
 
-
-
-if __name__ == "__main__":
-    # Set output parameters
-    runnum = 2
-    output_dir = os.path.join("results", "hipp", "run%03d" % runnum)
-    assert os.path.exists(output_dir)
-
-    # Before running the experiment, save a file to specify the Git commit id
-    save_git_info(output_dir)
-
-    # Load the data
-    N, S_train, pos_train, S_test, pos_test = load_rat_data()
-
-    # Model dimensions
-    Ks = np.arange(5, 55, step=5)
-
-    # Gibbs iterations
-    N_iter = 1000
-
+def make_model_list(Ks=np.arange(5,25,step=5)):
     # Define a sequence of models
     names_list = []
     fnames_list = []
@@ -161,20 +171,13 @@ if __name__ == "__main__":
     args_list  = []
     color_list = []
 
-    # Homogeneous Poisson baseline
-    from scipy.special import gammaln
-    homog_lmbda = S_train.sum(0) / float(S_train.shape[0])
-    homog_ll = -gammaln(S_test+1).sum() \
-               - (homog_lmbda * S_test.shape[0]).sum() \
-               + (S_test * np.log(homog_lmbda)).sum()
-
     # Mixture Models
-    for K in Ks:
-        names_list.append("Mixture (K=%d)" % K)
-        fnames_list.append("mixture_K%d" % K)
-        class_list.append(pyhsmm_spiketrains.models.PoissonMixture)
-        args_list.append({"K": K, "alpha_0": 10.0})
-        color_list.append(allcolors[0])
+    # for K in Ks:
+    #     names_list.append("Mixture (K=%d)" % K)
+    #     fnames_list.append("mixture_K%d" % K)
+    #     class_list.append(pyhsmm_spiketrains.models.PoissonMixture)
+    #     args_list.append({"K": K, "alpha_0": 10.0})
+    #     color_list.append(allcolors[0])
 
     # DP Mixture
     # names_list.append("DP-Mixture")
@@ -201,16 +204,28 @@ if __name__ == "__main__":
                       "init_state_concentration": 1.})
     color_list.append(allcolors[2])
 
-    # HSMMs
+    # Negative Binomial Duration HSMMs
+    avg_dur = 1./0.25
     for K in Ks:
-        avg_dur = 1./0.25
         names_list.append("HSMM (K=%d)" % K)
-        fnames_list.append("hsmm_K%d" % K)
+        fnames_list.append("intnegbin_hsmm_K%d" % K)
         class_list.append(pyhsmm_spiketrains.models.PoissonHSMMIntNegBinDuration)
         args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.,
-                          "r_max": 10, "alpha_dur": 2*avg_dur, "beta_dur": 2.})
+                          "r_max": 1, "alpha_dur": 1.0, "beta_dur": 1.})
 
         color_list.append(allcolors[3])
+
+
+    # Poisson Duration HSMMs
+    # for K in Ks:
+    #     names_list.append("HSMM (K=%d)" % K)
+    #     fnames_list.append("poisson_hsmm_K%d" % K)
+    #     class_list.append(pyhsmm_spiketrains.models.PoissonHSMMPoissonDuration)
+    #     args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.,
+    #                       "alpha_dur": 2*avg_dur, "beta_dur": 2.})
+    #
+    #     color_list.append(allcolors[4])
+
 
     # HDP-HSMM
     # names_list.append("HDP-HSMM")
@@ -229,6 +244,33 @@ if __name__ == "__main__":
     #                   "dur_distns": dur_distns})
     # color_list.append(allcolors[4])
 
+    return names_list, fnames_list, class_list, args_list, color_list
+
+def run_experiment():
+    # Set output parameters
+    dataname = "hipp_1dtrack"
+    runnum = 2
+    output_dir = os.path.join("results", dataname, "run%03d" % runnum)
+    assert os.path.exists(output_dir)
+
+
+    # Load the data
+    N, S_train, pos_train, S_test, pos_test = load_hipp_data(dataname)
+
+    # Define a set of models
+    Ks = np.arange(5, 50, step=5)
+    names_list, fnames_list, class_list, args_list, color_list = \
+        make_model_list(Ks)
+
+    # Fit the baseline model
+    from scipy.special import gammaln
+    homog_lmbda = S_train.sum(0) / float(S_train.shape[0])
+    homog_ll = -gammaln(S_test+1).sum() \
+               - (homog_lmbda * S_test.shape[0]).sum() \
+               + (S_test * np.log(homog_lmbda)).sum()
+
+    # Fit the models with Gibbs sampling
+    N_iter = 1000
     results_list = []
     for model_name, model_fname, model_class, model_args in \
             zip(names_list, fnames_list, class_list, args_list):
@@ -257,6 +299,159 @@ if __name__ == "__main__":
                 cPickle.dump(res, f, protocol=-1)
 
         results_list.append(res)
+
+    # Plot
+    plot_predictive_log_likelihoods(results_list, color_list, baseline=homog_ll)
+
+
+def test_hmm_vs_hsmm():
+    # Set output parameters
+    dataname = "hipp_1dtrack"
+    runnum = 2
+    output_dir = os.path.join("results", dataname, "run%03d" % runnum)
+    assert os.path.exists(output_dir)
+
+    # Before running the experiment, save a file to specify the Git commit id
+    save_git_info(output_dir)
+
+    # Load the data
+    N, S_train, pos_train, S_test, pos_test = load_hipp_data(dataname)
+
+    # Set observation hypers
+    S_mean = S_train.mean(0)
+    alpha_obs = 2.
+    beta_obs = 2. / S_mean
+
+    # Fit the baseline model
+    from scipy.special import gammaln
+    homog_lmbda = S_train.sum(0) / float(S_train.shape[0])
+    homog_ll = -gammaln(S_test+1).sum() \
+               - (homog_lmbda * S_test.shape[0]).sum() \
+               + (S_test * np.log(homog_lmbda)).sum()
+
+
+    results_list = []
+    # Fit an HMM
+    K = 50
+    hmm_model = pyhsmm_spiketrains.models.PoissonHMM(
+        N, alpha_obs=alpha_obs, beta_obs=beta_obs, K=K, alpha=10.0, init_state_concentration=1.)
+    hmm_model.add_data(S_train)
+    results_list.append(fit("HMM (50)", hmm_model, S_test, N_iter=1000))
+
+    # Fit an HSMM initialized with the HMM state sequence
+    hsmm_model = pyhsmm_spiketrains.models.PoissonHSMMIntNegBinDuration(
+        N, alpha_obs=alpha_obs, beta_obs=beta_obs, K=K,
+        **{"alpha": 10.0, "init_state_concentration": 1.,
+           "r_max": 1, "alpha_dur": 1.0, "beta_dur": 1.})
+    hsmm_model.add_data(S_train)
+    results_list.append(fit("HMM (50)", hsmm_model, S_test, N_iter=1000,
+                            init_state_seq=hmm_model.states_list[0].stateseq))
+
+    # Plot
+    plot_predictive_log_likelihoods(results_list, ["r", "b"], baseline=homog_ll, burnin=200)
+
+
+# def run_experiment_with_init():
+if __name__ == "__main__":
+    # Set output parameters
+    dataname = "hipp_1dtrack"
+    runnum = 2
+    output_dir = os.path.join("results", dataname, "run%03d" % runnum)
+    assert os.path.exists(output_dir)
+
+
+    # Load the data
+    N, S_train, pos_train, S_test, pos_test = load_hipp_data(dataname)
+
+    # Set observation hypers
+    S_mean = S_train.mean(0)
+    alpha_obs = 2.
+    beta_obs = 2. / S_mean
+
+    # Define a set of model sizes
+    Ks = np.arange(5, 50, step=5)
+
+    # Fit the baseline model
+    from scipy.special import gammaln
+    homog_lmbda = S_train.sum(0) / float(S_train.shape[0])
+    homog_ll = -gammaln(S_test+1).sum() \
+               - (homog_lmbda * S_test.shape[0]).sum() \
+               + (S_test * np.log(homog_lmbda)).sum()
+
+    # Fit the models with Gibbs sampling
+    N_iter = 1000
+    results_list = []
+    names_list = []
+    color_list = []
+    for K in Ks:
+        # Mixture Models
+        model_name = "Mixture (K=%d)" % K
+        model_fname = "mixture_K%d" % K
+        if os.path.exists(model_fname):
+            print "Loading results from: ", model_fname
+            with gzip.open(model_fname, "r") as f:
+                res = cPickle.load(f)
+
+        else:
+            mixture_model = pyhsmm_spiketrains.models.PoissonMixture(
+                N, K=K, alpha_obs=alpha_obs, beta_obs=beta_obs, alpha_0=10.0)
+            mixture_model.add_data(S_train)
+            res = fit(model_name, mixture_model, S_test, N_iter=N_iter)
+
+            # Save results
+            with gzip.open(model_fname, "w") as f:
+                print "Saving results to: ", model_fname
+                cPickle.dump(res, f, protocol=-1)
+
+        names_list.append(model_name)
+        results_list.append(res)
+        color_list.append(allcolors[0])
+
+        # HMM
+        model_name = "HMM (K=%d)" % K
+        model_fname = "hmm_K%d" % K
+        if os.path.exists(model_fname):
+            print "Loading results from: ", model_fname
+            with gzip.open(model_fname, "r") as f:
+                res = cPickle.load(f)
+
+        else:
+            hmm_model = pyhsmm_spiketrains.models.PoissonHMM(
+            N, alpha_obs=alpha_obs, beta_obs=beta_obs, K=K, alpha=10.0, init_state_concentration=1.)
+            hmm_model.add_data(S_train)
+
+            names_list.append(model_name)
+            results_list.append(fit(model_name, hmm_model, S_test, N_iter=1000))
+            color_list.append(allcolors[1])
+
+        # Save results
+        with gzip.open(model_fname, "w") as f:
+            print "Saving results to: ", model_fname
+            cPickle.dump(res, f, protocol=-1)
+
+        # HSMM
+        model_name = "NB HSMM (K=%d)" % K
+        model_fname = "intnegbin_hsmm_K%d" % K
+        if os.path.exists(model_fname):
+            print "Loading results from: ", model_fname
+            with gzip.open(model_fname, "r") as f:
+                res = cPickle.load(f)
+        else:
+            hsmm_model = pyhsmm_spiketrains.models.PoissonHSMMIntNegBinDuration(
+            N, alpha_obs=alpha_obs, beta_obs=beta_obs, K=K,
+            **{"alpha": 10.0, "init_state_concentration": 1.,
+               "r_max": 10, "alpha_dur": 1.0, "beta_dur": 1.})
+            hsmm_model.add_data(S_train)
+
+            names_list.append(model_name)
+            results_list.append(fit(model_name, hsmm_model, S_test, N_iter=1000,
+                                    init_state_seq=hmm_model.states_list[0].stateseq))
+            color_list.append(allcolors[2])
+
+            # Save results
+            with gzip.open(model_fname, "w") as f:
+                print "Saving results to: ", model_fname
+                cPickle.dump(res, f, protocol=-1)
 
     # Plot
     plot_predictive_log_likelihoods(results_list, color_list, baseline=homog_ll)
