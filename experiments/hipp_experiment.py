@@ -354,7 +354,7 @@ def test_hmm_vs_hsmm():
 # def run_experiment_with_init():
 if __name__ == "__main__":
     # Set output parameters
-    dataname = "hipp_1dtrack"
+    dataname = "hipp_2dtrack_b"
     runnum = 2
     output_dir = os.path.join("results", dataname, "run%03d" % runnum)
     assert os.path.exists(output_dir)
@@ -386,7 +386,7 @@ if __name__ == "__main__":
     for K in Ks:
         # Mixture Models
         model_name = "Mixture (K=%d)" % K
-        model_fname = "mixture_K%d" % K
+        model_fname = os.path.join(output_dir, "mixture_K%d.pkl" % K)
         if os.path.exists(model_fname):
             print "Loading results from: ", model_fname
             with gzip.open(model_fname, "r") as f:
@@ -409,29 +409,32 @@ if __name__ == "__main__":
 
         # HMM
         model_name = "HMM (K=%d)" % K
-        model_fname = "hmm_K%d" % K
+        model_fname = os.path.join(output_dir, "hmm_K%d.pkl" % K)
         if os.path.exists(model_fname):
             print "Loading results from: ", model_fname
             with gzip.open(model_fname, "r") as f:
                 res = cPickle.load(f)
+                hmm_model = res.samples
 
         else:
             hmm_model = pyhsmm_spiketrains.models.PoissonHMM(
             N, alpha_obs=alpha_obs, beta_obs=beta_obs, K=K, alpha=10.0, init_state_concentration=1.)
             hmm_model.add_data(S_train)
+            res  = fit(model_name, hmm_model, S_test, N_iter=1000)
 
-            names_list.append(model_name)
-            results_list.append(fit(model_name, hmm_model, S_test, N_iter=1000))
-            color_list.append(allcolors[1])
+            # Save results
+            with gzip.open(model_fname, "w") as f:
+                print "Saving results to: ", model_fname
+                cPickle.dump(res, f, protocol=-1)
 
-        # Save results
-        with gzip.open(model_fname, "w") as f:
-            print "Saving results to: ", model_fname
-            cPickle.dump(res, f, protocol=-1)
+        names_list.append(model_name)
+        results_list.append(res)
+        color_list.append(allcolors[1])
 
-        # HSMM
+
+        # Negative Binomial Duration HSMM
         model_name = "NB HSMM (K=%d)" % K
-        model_fname = "intnegbin_hsmm_K%d" % K
+        model_fname = os.path.join(output_dir, "intnegbin_hsmm_K%d.pkl" % K)
         if os.path.exists(model_fname):
             print "Loading results from: ", model_fname
             with gzip.open(model_fname, "r") as f:
@@ -442,16 +445,45 @@ if __name__ == "__main__":
             **{"alpha": 10.0, "init_state_concentration": 1.,
                "r_max": 10, "alpha_dur": 1.0, "beta_dur": 1.})
             hsmm_model.add_data(S_train)
-
-            names_list.append(model_name)
-            results_list.append(fit(model_name, hsmm_model, S_test, N_iter=1000,
-                                    init_state_seq=hmm_model.states_list[0].stateseq))
-            color_list.append(allcolors[2])
+            res = fit(model_name, hsmm_model, S_test, N_iter=1000,
+                                    init_state_seq=hmm_model.states_list[0].stateseq)
 
             # Save results
             with gzip.open(model_fname, "w") as f:
                 print "Saving results to: ", model_fname
                 cPickle.dump(res, f, protocol=-1)
+
+        names_list.append(model_name)
+        results_list.append(res)
+        color_list.append(allcolors[2])
+
+
+        # Poisson Duration HSMM
+        model_name = "Poisson HSMM (K=%d)" % K
+        model_fname = os.path.join(output_dir, "poisson_hsmm_K%d.pkl" % K)
+        if os.path.exists(model_fname):
+            print "Loading results from: ", model_fname
+            with gzip.open(model_fname, "r") as f:
+                res = cPickle.load(f)
+        else:
+            phsmm_model = pyhsmm_spiketrains.models.PoissonHSMMPoissonDuration(
+            N, alpha_obs=alpha_obs, beta_obs=beta_obs, K=K,
+            **{"alpha": 10.0, "init_state_concentration": 1.,
+               "alpha_dur": 2.0 * 4.0, "beta_dur": 2.})
+            phsmm_model.add_data(S_train)
+
+            res = fit(model_name, phsmm_model, S_test, N_iter=1000,
+                                    init_state_seq=hmm_model.states_list[0].stateseq)
+
+            # Save results
+            with gzip.open(model_fname, "w") as f:
+                print "Saving results to: ", model_fname
+                cPickle.dump(res, f, protocol=-1)
+
+        names_list.append(model_name)
+        results_list.append(res)
+        color_list.append(allcolors[3])
+
 
     # Plot
     plot_predictive_log_likelihoods(results_list, color_list, baseline=homog_ll)
