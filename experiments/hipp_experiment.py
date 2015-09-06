@@ -41,28 +41,6 @@ def split_train_test(S, pos, trainfrac):
     else:
         return S_train, S_test
 
-# def load_rat_data(trainfrac=0.8):
-#     raw_data = loadmat(data_file)
-#     data = raw_data['AllSpikeData'].astype(np.int)
-#
-#     # Transpose so that time is the first axis
-#     S = data.T
-#     S = np.array(S.todense())
-#
-#     # Get the time stamps
-#     T,N = S.shape
-#     dt = 0.25
-#     ts = np.arange(T) * dt
-#
-#     # Get the corresponding position
-#     pos = raw_data['rat_pos']
-#     center = raw_data['cp'].ravel()
-#     radius = np.float(raw_data['r'])
-#
-#     S_train, pos_train, S_test, pos_test = split_train_test(S, pos, trainfrac=trainfrac)
-#
-#     return N, S_train, pos_train, S_test, pos_test
-
 def load_hipp_data(dataname="hipp_2dtrack_b", trainfrac=0.8):
     raw_data = loadmat("data/%s.mat" % dataname)
     S = raw_data['S'].astype(np.int).copy("C")

@@ -247,6 +247,9 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
             for o in self.obs_distns:
                 o.beta_0[n] = bn
 
+    # TODO: Reimplement EB for obs hypers
+    def set_obs_hypers_via_empirical_bayes():
+        raise NotImplementedError()
 
 ### Special case resampling Poisson observation distributions
 class _PoissonHMMMixin(_PoissonMixin):
