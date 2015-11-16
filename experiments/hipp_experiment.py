@@ -64,16 +64,23 @@ def load_hipp_data(dataname="hipp_2dtrack_b", trainfrac=0.8):
 
 
 Results = namedtuple(
-    "Results", ["name", "loglikes", "predictive_lls", "samples", "timestamps"])
+    "Results", ["name", "loglikes", "predictive_lls",
+                "N_used", "alphas", "gammas",
+                "rates", "obs_hypers",
+                "samples", "timestamps"])
 
 def fit(name, model, test_data, N_iter=1000, init_state_seq=None):
     def evaluate(model):
-        ll, pll = \
-            model.log_likelihood(), \
-            model.log_likelihood(test_data) \
-            # model.heldout_log_likelihood(test_data)
-        # print '{} '.format(pll),
-        return ll, pll
+        ll = model.log_likelihood()
+        pll = model.log_likelihood(test_data)
+        N_used = len(model.used_states)
+        trans = model.trans_distn
+        alpha = trans.alpha
+        gamma = trans.gamma if hasattr(trans, "gamma") else None
+        rates = model.rates.copy()
+        obs_hypers = model.obs_hypers
+        # print 'N_states: {}, \tPLL:{}\n'.format(len(model.used_states), pll),
+        return ll, pll, N_used, alpha, gamma, rates, obs_hypers
 
     def sample(model):
         tic = time.time()
@@ -90,10 +97,13 @@ def fit(name, model, test_data, N_iter=1000, init_state_seq=None):
     init_val = evaluate(model)
     vals, timesteps = zip(*[sample(model) for _ in progprint_xrange(N_iter)])
 
-    lls, plls = zip(*((init_val,) + vals))
+    lls, plls, N_used, alphas, gammas, rates, obs_hypers = \
+        zip(*((init_val,) + vals))
     timestamps = np.cumsum((0.,) + timesteps)
 
-    return Results(name, lls, plls, model.copy_sample(), timestamps)
+    return Results(name, lls, plls, N_used, alphas, gammas,
+                   rates, obs_hypers,
+                   model.copy_sample(), timestamps)
 
 def log_expected_pll(plls):
     return -np.log(len(plls)) + logsumexp(plls)
@@ -141,7 +151,7 @@ def save_git_info(output_dir):
     with open(os.path.join(output_dir, "readme.md"), "w") as f:
         f.writelines(["git commit: ", commit_id])
 
-def make_model_list(Ks=np.arange(5,25,step=5)):
+def make_model_list(Ks=np.arange(5,25, step=5)):
     # Define a sequence of models
     names_list = []
     fnames_list = []
@@ -167,7 +177,8 @@ def make_model_list(Ks=np.arange(5,25,step=5)):
         names_list.append("HMM (K=%d)" % K)
         fnames_list.append("hmm_K%d" % K)
         class_list.append(pyhsmm_spiketrains.models.PoissonHMM)
-        args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.})
+        args_list.append({"K": K, "alpha_a_0": 5.0, "alpha_b_0": 1.0,
+                          "init_state_concentration": 1.})
         color_list.append(allcolors[1])
 
     # HDP-HMM
@@ -175,23 +186,23 @@ def make_model_list(Ks=np.arange(5,25,step=5)):
     fnames_list.append("hdp_hmm")
     class_list.append(pyhsmm_spiketrains.models.PoissonHDPHMM)
     args_list.append({"K_max": 100,
-                      # "alpha_a_0": 10.0, "alpha_b_0": 1.0,
-                      "alpha": 10.0,
-                      # "gamma_a_0": 100.0, "gamma_b_0": 1.0,
-                      "gamma": 500.0,
+                      "alpha_a_0": 5.0, "alpha_b_0": 1.0,
+                      # "alpha": 3.0,
+                      "gamma_a_0": 8.0, "gamma_b_0": 1.0,
+                      # "gamma": 120.0,
                       "init_state_concentration": 1.})
     color_list.append(allcolors[2])
 
     # Negative Binomial Duration HSMMs
-    avg_dur = 1./0.25
-    for K in Ks:
-        names_list.append("HSMM (K=%d)" % K)
-        fnames_list.append("intnegbin_hsmm_K%d" % K)
-        class_list.append(pyhsmm_spiketrains.models.PoissonHSMMIntNegBinDuration)
-        args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.,
-                          "r_max": 1, "alpha_dur": 1.0, "beta_dur": 1.})
-
-        color_list.append(allcolors[3])
+    # avg_dur = 1./0.25
+    # for K in Ks:
+    #     names_list.append("HSMM (K=%d)" % K)
+    #     fnames_list.append("intnegbin_hsmm_K%d" % K)
+    #     class_list.append(pyhsmm_spiketrains.models.PoissonHSMMIntNegBinDuration)
+    #     args_list.append({"K": K, "alpha": 10.0, "init_state_concentration": 1.,
+    #                       "r_max": 1, "alpha_dur": 1.0, "beta_dur": 1.})
+    #
+    #     color_list.append(allcolors[3])
 
 
     # Poisson Duration HSMMs
@@ -226,8 +237,8 @@ def make_model_list(Ks=np.arange(5,25,step=5)):
 
 def run_experiment():
     # Set output parameters
-    dataname = "hipp_1dtrack"
-    runnum = 2
+    dataname = "hipp_2dtrack_a"
+    runnum = 1
     output_dir = os.path.join("results", dataname, "run%03d" % runnum)
     assert os.path.exists(output_dir)
 
@@ -236,7 +247,7 @@ def run_experiment():
     N, S_train, pos_train, S_test, pos_test = load_hipp_data(dataname)
 
     # Define a set of models
-    Ks = np.arange(5, 50, step=5)
+    Ks = np.arange(5, 70, step=5)
     names_list, fnames_list, class_list, args_list, color_list = \
         make_model_list(Ks)
 
@@ -248,7 +259,7 @@ def run_experiment():
                + (S_test * np.log(homog_lmbda)).sum()
 
     # Fit the models with Gibbs sampling
-    N_iter = 1000
+    N_iter = 5000
     results_list = []
     for model_name, model_fname, model_class, model_args in \
             zip(names_list, fnames_list, class_list, args_list):
@@ -281,6 +292,7 @@ def run_experiment():
     # Plot
     plot_predictive_log_likelihoods(results_list, color_list, baseline=homog_ll)
 
+    import ipdb; ipdb.set_trace()
 
 def test_hmm_vs_hsmm():
     # Set output parameters
@@ -329,11 +341,10 @@ def test_hmm_vs_hsmm():
     plot_predictive_log_likelihoods(results_list, ["r", "b"], baseline=homog_ll, burnin=200)
 
 
-# def run_experiment_with_init():
-if __name__ == "__main__":
+def run_experiment_with_init():
     # Set output parameters
-    dataname = "hipp_2dtrack_b"
-    runnum = 2
+    dataname = "hipp_2dtrack_a"
+    runnum = 1
     output_dir = os.path.join("results", dataname, "run%03d" % runnum)
     assert os.path.exists(output_dir)
 
@@ -465,3 +476,6 @@ if __name__ == "__main__":
 
     # Plot
     plot_predictive_log_likelihoods(results_list, color_list, baseline=homog_ll)
+
+if __name__ == "__main__":
+    run_experiment()

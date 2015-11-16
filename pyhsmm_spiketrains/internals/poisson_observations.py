@@ -17,21 +17,21 @@ class PoissonVector(ProductDistribution, Collapsed):
         """
         self.N = N
         if isscalar(alpha_0):
-            self.alpha_0 = alpha_0*np.ones(N)
+            alpha_0 = alpha_0*np.ones(N)
         elif isinstance(alpha_0, np.ndarray):
             assert len(alpha_0) == N
-            self.alpha_0 = alpha_0
+            alpha_0 = alpha_0
 
         if isscalar(beta_0):
-            self.beta_0 = beta_0*np.ones(N)
+            beta_0 = beta_0*np.ones(N)
         elif isinstance(beta_0, np.ndarray):
             assert len(beta_0) == N
-            self.beta_0 = beta_0
+            beta_0 = beta_0
 
         self.poissons = []
         for n in range(N):
-            self.poissons.append(Poisson(alpha_0=self.alpha_0[n],
-                                         beta_0=self.beta_0[n]))
+            self.poissons.append(Poisson(alpha_0=alpha_0[n],
+                                         beta_0=beta_0[n]))
 
         super(PoissonVector, self).__init__(self.poissons)
 

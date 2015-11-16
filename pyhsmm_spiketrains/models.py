@@ -13,7 +13,7 @@ from pyhsmm_spiketrains.internals.poisson_statistics \
     import fast_likelihoods, fast_statistics
 
 ### Special case the Poisson Mixture model
-class PoissonLabels(pybasicbayes.internals.labels.Labels):
+class PoissonLabels(pybasicbayes.models.Labels):
     def _compute_scores(self):
         data, K = self.data, len(self.components)
         scores = np.zeros((data.shape[0],K))
@@ -100,6 +100,14 @@ class PoissonIntNegBinHSMMStates(PoissonStates, pyhsmm.models.HSMMIntNegBin._sta
 ### Special case resampling Poisson observation distributions
 class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
 
+    @property
+    def rates(self):
+        return np.array([o.lmbdas for o in self.obs_distns])
+
+    @property
+    def obs_hypers(self):
+        return self.obs_distns[0].hypers
+
     ### speeding up obs resampling
     def resample_obs_distns(self):
         if len(self.states_list) > 0:
@@ -112,7 +120,7 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
             super(_PoissonMixin,self).resample_obs_distns()
 
         # Resample hypers
-        # self.resample_obs_hypers()
+        # self.resample_obs_hypers_hmc()
         self.resample_obs_scale()
 
     def slow_resample_obs_distns(self):
@@ -227,6 +235,7 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
                     = b^{a + c - 1} e^{-b * (d+lam)}
         :return:
         """
+        # import ipdb; ipdb.set_trace()
         assert all(map(lambda o: isinstance(o, PoissonVector),
                        self.obs_distns))
         N = self.obs_distns[0].N
@@ -245,7 +254,7 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
             # Sample and set
             bn = np.random.gamma(c_post, 1./d_post)
             for o in self.obs_distns:
-                o.beta_0[n] = bn
+                o.poissons[n].beta_0 = bn
 
     # TODO: Reimplement EB for obs hypers
     def set_obs_hypers_via_empirical_bayes():
