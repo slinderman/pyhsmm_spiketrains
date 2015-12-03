@@ -88,6 +88,13 @@ class PoissonStates(pyhsmm.internals.hmm_states._StatesBase):
         fast_statistics(self.stateseq,self.data,ns,tots)
         return (ns,tots)
 
+    @property
+    def rate(self):
+        lmbdas = np.array([o.lmbdas for o in self.obs_distns])
+        rate = lmbdas[self.stateseq,:]
+        assert rate.shape == (self.T, self.obs_distns[0].N)
+        return rate
+
 class PoissonHMMStates(PoissonStates, pyhsmm.models.HMM._states_class):
     pass
 
