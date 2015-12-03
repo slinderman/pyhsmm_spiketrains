@@ -108,6 +108,42 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
     def obs_hypers(self):
         return self.obs_distns[0].hypers
 
+    @property
+    def A(self):
+        return self.trans_distn.trans_matrix
+
+    # Helper function
+    def relabel_by_usage(self):
+        """
+        Relabel the state sequence by usage.
+        Permute the transition matrix accordingly.
+        """
+        stateseqs = self.stateseqs
+        N = self.num_states
+        usages = sum(np.bincount(l[~np.isnan(l)].astype('int32'), minlength=N)
+                     for l in stateseqs)
+        perm  = np.argsort(usages)[::-1]
+        ranks = np.argsort(perm)
+
+        # Permute the stateseqs
+        for stateseq,statesobj in zip(stateseqs,self.states_list):
+            perm_stateseq = np.empty_like(stateseq)
+            good = ~np.isnan(stateseq)
+            perm_stateseq[good] = ranks[stateseq[good].astype('int32')]
+            if np.isnan(stateseq).any():
+                perm_stateseq[~good] = np.nan
+
+            statesobj.stateseq = perm_stateseq
+
+        # Permute the observations
+        perm_obs_distns = [self.obs_distns[i] for i in perm]
+        self.obs_distns = perm_obs_distns
+
+        # Permute the transition matrix
+        perm_A = self.trans_distn.trans_matrix[np.ix_(perm, perm)]
+        self.trans_distn.trans_matrix = perm_A
+
+
     ### speeding up obs resampling
     def resample_obs_distns(self):
         if len(self.states_list) > 0:
