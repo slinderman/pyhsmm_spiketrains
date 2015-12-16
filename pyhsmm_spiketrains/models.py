@@ -1,4 +1,6 @@
 from __future__ import division
+
+import operator
 import numpy as np
 from scipy.special import gammaln, psi
 
@@ -11,6 +13,8 @@ from pyhsmm_spiketrains.internals.poisson_observations \
     import PoissonVector
 from pyhsmm_spiketrains.internals.poisson_statistics \
     import fast_likelihoods, fast_statistics
+from pyhsmm_spiketrains.internals.utils \
+    import fit_nbinom
 
 ### Special case the Poisson Mixture model
 class PoissonLabels(pybasicbayes.models.Labels):
@@ -107,6 +111,11 @@ class PoissonIntNegBinHSMMStates(PoissonStates, pyhsmm.models.HSMMIntNegBin._sta
 ### Special case resampling Poisson observation distributions
 class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
 
+    _resample_obs_method = "resample_obs_scale"
+    @property
+    def N(self):
+        return self.obs_distns[0].N
+
     @property
     def rates(self):
         return np.array([o.lmbdas for o in self.obs_distns])
@@ -163,17 +172,19 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
             super(_PoissonMixin,self).resample_obs_distns()
 
         # Resample hypers
-        # self.resample_obs_hypers_hmc()
-        self.resample_obs_scale()
+        operator.methodcaller(self._resample_obs_method)(self)
 
     def slow_resample_obs_distns(self):
         super(_PoissonMixin,self).resample_obs_distns()
 
         # Resample hypers
-        # self.resample_obs_hypers()
-        self.resample_obs_scale()
+        operator.methodcaller(self._resample_obs_method)(self)
 
     ### resampling observation hypers
+    def resample_obs_hypers_null(self):
+        # Dummy for skipping obs resampling
+        pass
+
     def resample_obs_hypers_hmc(self):
         """
         Sample the parameters of a gamma prior given firing rates L
@@ -245,7 +256,7 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
             return np.array([-dlp_dlna, -dlp_dlnb])
 
         n_steps = 10
-        step_sz = 0.01
+        step_sz = 0.001
 
         # Update the hypers for each cell
         a_f = a_0.copy()
@@ -259,7 +270,10 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
 
             # Set the hypers
             a_f[n], b_f[n] = np.exp(xc)
-            # o.hypers = np.exp(xc)
+
+        # Truncate to make sure > 0
+        a_f = np.clip(a_f, 1e-4, np.inf)
+        b_f = np.clip(b_f, 1e-4, np.inf)
 
         for o in self.obs_distns:
             o.hypers = (a_f,b_f)
@@ -278,7 +292,6 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
                     = b^{a + c - 1} e^{-b * (d+lam)}
         :return:
         """
-        # import ipdb; ipdb.set_trace()
         assert all(map(lambda o: isinstance(o, PoissonVector),
                        self.obs_distns))
         N = self.obs_distns[0].N
@@ -299,9 +312,31 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
             for o in self.obs_distns:
                 o.poissons[n].beta_0 = bn
 
-    # TODO: Reimplement EB for obs hypers
-    def set_obs_hypers_via_empirical_bayes():
-        raise NotImplementedError()
+    def init_obs_hypers_via_empirical_bayes(self):
+        """
+        Initialize the firing rate hyperparameters with EB
+        """
+        assert all(map(lambda o: isinstance(o, PoissonVector),
+                       self.obs_distns))
+
+        # Get the data
+        alldata = np.vstack([s.data for s in self.states_list])
+        assert alldata.size > 0
+
+        # Initialize spike rate hypers with the maximum likelihood estimate
+        N = self.obs_distns[0].N
+        alpha = np.zeros(N)
+        beta = np.zeros(N)
+
+        for n in range(N):
+            rc, pc = fit_nbinom(alldata[:,n])
+            alpha[n] = rc
+            beta[n] = 1.0/pc - 1
+
+        # Observation is a product of independent Poisson distributions
+        for o in self.obs_distns:
+            o.hypers = alpha, beta
+
 
 ### Special case resampling Poisson observation distributions
 class _PoissonHMMMixin(_PoissonMixin):
@@ -319,6 +354,34 @@ def _make_obs_distns(K, N, alpha_obs, beta_obs):
     for k in range(K):
         obs_distns.append(PoissonVector(N, alpha_0=alpha_obs, beta_0=beta_obs))
     return obs_distns
+
+class PoissonStatic(object):
+    """
+    Simple base class for Poisson neurons with homogeneous rates
+    """
+    def __init__(self, N):
+        self.N = N
+        self.data_list = []
+        self.lmbda = np.zeros(N)
+
+    def add_data(self, S):
+        assert S.ndim == 2 and S.shape[1] == self.N
+        self.data_list.append(S)
+
+    def max_likelihood(self):
+        S = 0.0
+        T = 0.0
+        for data in self.data_list:
+            S += data.sum(0)
+            T += data.shape[0]
+        self.lmbda = S / float(T)
+
+    def log_likelihood(self, S_test):
+        lmbda = self.lmbda
+        homog_ll = -gammaln(S_test+1).sum() \
+                   - (lmbda * S_test.shape[0]).sum() \
+                   + (S_test * np.log(lmbda)).sum()
+        return homog_ll
 
 class PoissonMixture(_PoissonMixtureMixin, pybasicbayes.models.Mixture):
     def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0, **kwargs):
