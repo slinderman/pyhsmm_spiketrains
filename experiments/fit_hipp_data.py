@@ -156,7 +156,7 @@ def make_hmm_models(N, S_train, Ks=np.arange(5,25, step=5), **kwargs):
 
     return names_list, fnames_list, color_list, hmm_list
 
-def make_hdphmm_models(N, S_train, K_max=100, **kwargs):
+def make_hdphmm_models(N, S_train, K_max=100, alpha_obs=1.0, beta_obs=1.0):
     # Define a sequence of models
     names_list = []
     fnames_list = []
@@ -173,9 +173,56 @@ def make_hdphmm_models(N, S_train, K_max=100, **kwargs):
             alpha_a_0=5.0, alpha_b_0=1.0,
             gamma_a_0=8.0, gamma_b_0=1.0,
             init_state_concentration=1.0,
-            **kwargs)
+            alpha_obs=alpha_obs,
+            beta_obs=beta_obs)
     hmm.add_data(S_train)
     hmm_list.append(hmm)
+
+    # Vary the hyperparameters of the scale resampling model
+    for alpha_a_0 in [1.0, 5.0, 10.0, 100.0]:
+        names_list.append("HDP-HMM (Scale)")
+        fnames_list.append("hdphmm_scale_alpha_a_0%.1f" % alpha_a_0)
+        color_list.append(allcolors[1])
+        hmm = \
+            pyhsmm_spiketrains.models.PoissonHDPHMM(
+                N=N, K_max=K_max,
+                alpha_a_0=alpha_a_0, alpha_b_0=1.0,
+                gamma_a_0=5.0, gamma_b_0=1.0,
+                init_state_concentration=1.0,
+                alpha_obs=alpha_obs,
+                beta_obs=beta_obs)
+        hmm.add_data(S_train)
+        hmm_list.append(hmm)
+
+    for gamma_a_0 in [1.0, 5.0, 10.0, 100.0]:
+        names_list.append("HDP-HMM (Scale)")
+        fnames_list.append("hdphmm_scale_gamma_a_0%.1f" % gamma_a_0)
+        color_list.append(allcolors[1])
+        hmm = \
+            pyhsmm_spiketrains.models.PoissonHDPHMM(
+                N=N, K_max=K_max,
+                alpha_a_0=5.0, alpha_b_0=1.0,
+                gamma_a_0=gamma_a_0, gamma_b_0=1.0,
+                init_state_concentration=1.0,
+                alpha_obs=alpha_obs,
+                beta_obs=beta_obs)
+        hmm.add_data(S_train)
+        hmm_list.append(hmm)
+
+    for new_alpha_obs in [0.1, 0.5, 1.0, 2.0, 2.5, 5.0, 10.0]:
+        names_list.append("HDP-HMM (Scale) (alpha_obs=%.1f)" % new_alpha_obs)
+        fnames_list.append("hdphmm_scale_alpha_obs%.1f" % new_alpha_obs)
+        color_list.append(allcolors[1])
+        hmm = \
+            pyhsmm_spiketrains.models.PoissonHDPHMM(
+                N=N, K_max=K_max,
+                alpha_a_0=5.0, alpha_b_0=1.0,
+                gamma_a_0=5.0, gamma_b_0=1.0,
+                init_state_concentration=1.0,
+                alpha_obs=new_alpha_obs,
+                beta_obs=beta_obs)
+        hmm.add_data(S_train)
+        hmm_list.append(hmm)
 
     # HDP-HMM with HMC for hyperparameters
     names_list.append("HDP-HMM (HMC)")
@@ -185,9 +232,10 @@ def make_hdphmm_models(N, S_train, K_max=100, **kwargs):
         pyhsmm_spiketrains.models.PoissonHDPHMM(
             N=N, K_max=K_max,
             alpha_a_0=5.0, alpha_b_0=1.0,
-            gamma_a_0=8.0, gamma_b_0=1.0,
+            gamma_a_0=5.0, gamma_b_0=1.0,
             init_state_concentration=1.0,
-            **kwargs)
+            alpha_obs=alpha_obs,
+            beta_obs=beta_obs)
     hmm.add_data(S_train)
     hmm._resample_obs_method = "resample_obs_hypers_hmc"
     hmm_list.append(hmm)
@@ -200,9 +248,10 @@ def make_hdphmm_models(N, S_train, K_max=100, **kwargs):
         pyhsmm_spiketrains.models.PoissonHDPHMM(
             N=N, K_max=K_max,
             alpha_a_0=5.0, alpha_b_0=1.0,
-            gamma_a_0=8.0, gamma_b_0=1.0,
+            gamma_a_0=5.0, gamma_b_0=1.0,
             init_state_concentration=1.0,
-            **kwargs)
+            alpha_obs=alpha_obs,
+            beta_obs=beta_obs)
     hmm.add_data(S_train)
     hmm.init_obs_hypers_via_empirical_bayes()
     hmm._resample_obs_method = "resample_obs_hypers_null"
@@ -241,13 +290,13 @@ def run_experiment():
     model_list = []
 
     # Add parametric HMMs
-    nl, fnl, cl, ml = \
-        make_hmm_models(N, S_train, Ks=np.arange(5,90,step=10),
-                        alpha_obs=1.0, beta_obs=1.0)
-    names_list.extend(nl)
-    fnames_list.extend(fnl)
-    color_list.extend(cl)
-    model_list.extend(ml)
+    # nl, fnl, cl, ml = \
+    #     make_hmm_models(N, S_train, Ks=np.arange(5,90,step=10),
+    #                     alpha_obs=1.0, beta_obs=1.0)
+    # names_list.extend(nl)
+    # fnames_list.extend(fnl)
+    # color_list.extend(cl)
+    # model_list.extend(ml)
 
     # Add HDP_HMMs
     nl, fnl, cl, ml = \
@@ -260,7 +309,6 @@ def run_experiment():
 
     # Fit the models with Gibbs sampling
     N_iter = 5000
-    results_list = []
     for model_name, model_fname, model in \
             zip(names_list, fnames_list, model_list):
         print "Model: ", model_name
@@ -270,9 +318,10 @@ def run_experiment():
 
         # Check for existing results
         if os.path.exists(output_file):
-            print "Loading results from: ", output_file
-            with gzip.open(output_file, "r") as f:
-                res = cPickle.load(f)
+            # print "Loading results from: ", output_file
+            # with gzip.open(output_file, "r") as f:
+            #     res = cPickle.load(f)
+            print "Results already exist at: ", output_file
 
         else:
             res = fit(model_name, model, S_test, N_iter=N_iter)
@@ -281,11 +330,6 @@ def run_experiment():
             with gzip.open(output_file, "w") as f:
                 print "Saving results to: ", output_file
                 cPickle.dump(res, f, protocol=-1)
-
-        results_list.append(res)
-
-    # Plot
-    plot_predictive_log_likelihoods(results_list, color_list, baseline=static_ll)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,24 @@ def log_expected_pll(plls):
     return -np.log(len(plls)) + logsumexp(plls)
 
 
+def expected_ll(plls, subsamples=20, subsmplfrac=0.75):
+    """
+    Compute the expected pred ll and its standard deviation by
+    using random subsamples of the pred ll samples.
+    """
+    N = len(plls)
+    subplls = np.zeros(subsamples)
+    for s in range(subsamples):
+        insubset = np.random.rand(N) < subsmplfrac
+        subset = plls[insubset]
+        subplls[s] = logsumexp(subset) - np.log(len(subset))
+
+    mean_pll = subplls.mean()
+    std_pll = subplls.std()
+
+    return mean_pll, std_pll
+
+
 def split_train_test(S, pos, trainfrac):
     T,N = S.shape
 
