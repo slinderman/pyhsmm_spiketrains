@@ -79,3 +79,10 @@ def convert_polar_to_xy(pos, center):
     pos_y = center[1] + pos[:,0] * np.sin(pos[:,1])
 
     return pos_x, pos_y
+
+def permute_stateseq(perm, stateseq):
+    ranks = np.argsort(perm)
+    perm_stateseq = np.nan*np.ones(stateseq)
+    good = ~np.isnan(stateseq)
+    perm_stateseq[good] = ranks[stateseq[good].astype('int32')]
+    return perm_stateseq
