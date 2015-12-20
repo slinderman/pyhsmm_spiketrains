@@ -69,6 +69,46 @@ def fit(name, model, test_data, N_iter=1000, init_state_seq=None):
                    rates, obs_hypers,
                    model.copy_sample(), timestamps)
 
+def fit_vb(name, model, test_data, N_iter=1000, init_state_seq=None):
+    def evaluate(model):
+        ll = model.log_likelihood()
+        pll = model.log_likelihood(test_data)
+        N_used = len(model.used_states)
+        trans = model.trans_distn
+        alpha = trans.alpha
+        gamma = trans.gamma if hasattr(trans, "gamma") else None
+        rates = model.rates.copy()
+        obs_hypers = model.obs_hypers
+        # print 'N_states: {}, \tPLL:{}\n'.format(len(model.used_states), pll),
+        return ll, pll, N_used, alpha, gamma, rates, obs_hypers
+
+    def sample(model):
+        tic = time.time()
+        model.meanfield_coordinate_descent_step()
+        timestep = time.time() - tic
+
+        # Resample from mean field posterior
+        model._resample_from_mf()
+
+        return evaluate(model), timestep
+
+    # Initialize with given state seq
+    if init_state_seq is not None:
+        model.states_list[0].stateseq = init_state_seq
+        for _ in xrange(100):
+            model.resample_obs_distns()
+
+    init_val = evaluate(model)
+    vals, timesteps = zip(*[sample(model) for _ in progprint_xrange(200)])
+
+    lls, plls, N_used, alphas, gammas, rates, obs_hypers = \
+        zip(*((init_val,) + vals))
+    timestamps = np.cumsum((0.,) + timesteps)
+
+    return Results(name, lls, plls, N_used, alphas, gammas,
+                   rates, obs_hypers,
+                   model.copy_sample(), timestamps)
+
 def plot_predictive_log_likelihoods(results, colors, burnin=50, baseline=0):
     plt.figure()
     plt.subplot(121)
@@ -110,6 +150,7 @@ def make_hmm_models(N, S_train, Ks=np.arange(5,25, step=5), **kwargs):
     fnames_list = []
     hmm_list = []
     color_list = []
+    method_list = []
 
     for K in Ks:
         names_list.append("HMM (K=%d)" % K)
@@ -122,14 +163,16 @@ def make_hmm_models(N, S_train, Ks=np.arange(5,25, step=5), **kwargs):
                 **kwargs)
         hmm.add_data(S_train)
         hmm_list.append(hmm)
+        method_list.append(fit)
 
-    return names_list, fnames_list, color_list, hmm_list
+    return names_list, fnames_list, color_list, hmm_list, method_list
 
 def make_hdphmm_models(N, S_train, K_max=100, **kwargs):
     # Define a sequence of models
     names_list = []
     fnames_list = []
     hmm_list = []
+    method_list = []
     color_list = []
 
     # Standard HDP-HMM (Scale resampling)
@@ -145,6 +188,7 @@ def make_hdphmm_models(N, S_train, K_max=100, **kwargs):
             **kwargs)
     hmm.add_data(S_train)
     hmm_list.append(hmm)
+    method_list.append(fit)
 
     # HDP-HMM with HMC for hyperparameters
     names_list.append("HDP-HMM (HMC)")
@@ -160,6 +204,7 @@ def make_hdphmm_models(N, S_train, K_max=100, **kwargs):
     hmm.add_data(S_train)
     hmm._resample_obs_method = "resample_obs_hypers_hmc"
     hmm_list.append(hmm)
+    method_list.append(fit)
 
     # HDP-HMM with hypers set by empirical bayes
     names_list.append("HDP-HMM (EB)")
@@ -176,19 +221,29 @@ def make_hdphmm_models(N, S_train, K_max=100, **kwargs):
     hmm.init_obs_hypers_via_empirical_bayes()
     hmm._resample_obs_method = "resample_obs_hypers_null"
     hmm_list.append(hmm)
+    method_list.append(fit)
 
-    return names_list, fnames_list, color_list, hmm_list
+    # HDP-HMM with hypers set by mean field
+    # TODO: Support concentration priors!
+    names_list.append("HDP-HMM (VB)")
+    fnames_list.append("hdphmm_vb")
+    color_list.append(allcolors[1])
+    hmm = \
+        pyhsmm_spiketrains.models.PoissonDATruncHDPHMM(
+            N=N, K_max=K_max,
+            alpha=12.0,
+            gamma=12.0,
+            init_state_concentration=1.0,
+            **kwargs)
+    hmm.add_data(S_train, stateseq=np.random.randint(50, size=(S_train.shape[0],)))
+    hmm.init_obs_hypers_via_empirical_bayes()
+    hmm_list.append(hmm)
+    method_list.append(fit_vb)
+
+    return names_list, fnames_list, color_list, hmm_list, method_list
 
 
 def run_experiment(T, K, N, T_test, modelname, version, runnum):
-    # Load synthetic dataset
-    # T = 2000
-    # K = 100
-    # N = 50
-    # T_test = 200
-    # version = 1
-    # modeltype = "hdp_hmm"
-    # runnum = 1
     data_name = "synth_%s_T%d_K%d_N%d_v%d" % (modelname, T, K, N, version)
     results_dir = os.path.join("results",
                                data_name,
@@ -199,15 +254,6 @@ def run_experiment(T, K, N, T_test, modelname, version, runnum):
                         model=modelname, version=version)
 
     # Set output parameters
-    # dataname = "synth_%s_T%d_K%d_N%d" % (modelname, T, K, N)
-    # output_dir = os.path.join("results", dataname, "run%03d" % runnum)
-    # assert os.path.exists(output_dir)
-    #
-    # # Load the data
-    # hmm, S_train, Z_train, S_test, Z_test = \
-    #     load_synth_data(T=T, K=K, N=N, T_test=T_test,
-    #                     model=modelname,
-    #                     alpha_obs=1.0, beta_obs=1.0)
     N = hmm.N
 
     print "Running Synthetic Experiment"
@@ -217,41 +263,38 @@ def run_experiment(T, K, N, T_test, modelname, version, runnum):
     print "T_train:\t", S_train.shape[0]
     print "T_test:\t", S_test.shape[0]
 
-    # Fit the baseline model
-    static_model = pyhsmm_spiketrains.models.PoissonStatic(N)
-    static_model.add_data(S_train)
-    static_model.max_likelihood()
-    static_ll = static_model.log_likelihood(S_test)
-
     # Define a set of HMMs
     names_list = []
     fnames_list = []
     color_list = []
     model_list = []
+    method_list = []
 
     # Add parametric HMMs
-    nl, fnl, cl, ml = \
+    nl, fnl, cl, ml, mtdl = \
         make_hmm_models(N, S_train, Ks=np.arange(5,51,step=5),
                         alpha_obs=1.0, beta_obs=1.0)
     names_list.extend(nl)
     fnames_list.extend(fnl)
     color_list.extend(cl)
     model_list.extend(ml)
+    method_list.extend(mtdl)
 
     # Add HDP_HMMs
-    nl, fnl, cl, ml = \
+    nl, fnl, cl, ml, mtdl = \
         make_hdphmm_models(N, S_train, K_max=100,
                            alpha_obs=1.0, beta_obs=1.0)
     names_list.extend(nl)
     fnames_list.extend(fnl)
     color_list.extend(cl)
     model_list.extend(ml)
+    method_list.extend(mtdl)
 
     # Fit the models with Gibbs sampling
     N_iter = 5000
-    results_list = []
-    for model_name, model_fname, model in \
-            zip(names_list, fnames_list, model_list):
+    # results_list = []
+    for model_name, model_fname, model, method in \
+            zip(names_list, fnames_list, model_list, method_list):
         print "Model: ", model_name
         print "File:  ", model_fname
         print ""
@@ -259,30 +302,27 @@ def run_experiment(T, K, N, T_test, modelname, version, runnum):
 
         # Check for existing results
         if os.path.exists(output_file):
-            print "Loading results from: ", output_file
-            with gzip.open(output_file, "r") as f:
-                res = cPickle.load(f)
+            print "Found results at: ", output_file
 
         else:
-            res = fit(model_name, model, S_test, N_iter=N_iter)
+            res = method(model_name, model, S_test, N_iter=N_iter)
 
             # Save results
             with gzip.open(output_file, "w") as f:
                 print "Saving results to: ", output_file
                 cPickle.dump(res, f, protocol=-1)
 
-        results_list.append(res)
-
-    # Plot
-    plot_predictive_log_likelihoods(results_list, color_list, baseline=static_ll)
+            del res
 
 
 if __name__ == "__main__":
     modelname = "hdp-hmm"
     T = 2000
-    T_test = 200
+    T_test = 1000
     K = 100
     N = 50
     version = 1
     runnum = 1
-    run_experiment(T, K, N, T_test, modelname, version, runnum)
+
+    for version in xrange(1,11):
+        run_experiment(T, K, N, T_test, modelname, version, runnum)

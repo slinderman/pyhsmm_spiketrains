@@ -10,7 +10,7 @@ import pyhsmm_spiketrains.models
 reload(pyhsmm_spiketrains.models)
 from pyhsmm_spiketrains.internals.utils import split_train_test
 
-def load_synth_data(T, K, N, T_test=200,
+def load_synth_data(T, K, N, T_test=1000,
                     model='hdp-hmm',
                     version=1,
                     alpha_obs=1.0, beta_obs=1.0):

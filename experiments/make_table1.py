@@ -24,7 +24,7 @@ Results = namedtuple(
 
 
 def compute_predictive_log_likelihood(S_train, S_test,
-                                      results_list,
+                                      results,
                                       N_samples=2000):
 
     # Fit the baseline model
@@ -33,16 +33,15 @@ def compute_predictive_log_likelihood(S_train, S_test,
     static_model.max_likelihood()
     static_ll = static_model.log_likelihood(S_test)
 
+    # Get mean and standard deviation
+    m,s = expected_ll(np.array(results.predictive_lls[-N_samples:]))
 
-    for results in results_list:
-        # Get mean and standard deviation
-        m,s = expected_ll(np.array(results.predictive_lls[-N_samples:]))
-
-        # Standardize
-        m -= static_ll
-        m /= np.sum(S_test)
-        s /= np.sum(S_test)
-        print "PLL: %.3f +- %.3f" % (m,s)
+    # Standardize
+    m -= static_ll
+    m /= np.sum(S_test)
+    s /= np.sum(S_test)
+    print "PLL: %.3f +- %.3f" % (m,s)
+    return m
 
 def compute_state_overlap(Z_true, Z_inf,K):
     """
@@ -74,37 +73,69 @@ def compute_state_overlap(Z_true, Z_inf,K):
     herr = hamming_error(Z_true_hat, Z_inf_hat)
 
     print "Hamming Error: ", herr
+    return herr
 
-# Table 2: Pred LL and MSE for hippocampal data
+def make_table(table, row_headers, col_headers, fmt="{0.0f}"):
+    rows,cols = table.shape
+    tex = " "
+    for col_header in col_headers:
+        tex += " & " + str(col_header)
+    tex += " \\\\"
+
+    for i in xrange(rows):
+        tex += str(row_headers[i])
+        for j in xrange(cols):
+            tex += " & " + fmt.format(table[i,j])
+        tex += " \\\\ "
+
+    return tex
+
+# Table 1: Pred LL and Hamming Error for synthetic data
 if __name__ == "__main__":
     # Load synthetic dataset
+    true_model_type = "hdp-hmm"
     T = 2000
     K = 100
     N = 50
-    T_test = 200
-    version = 1
-    modeltype = "hdp-hmm"
+    T_test = 1000
     runnum = 1
-    results_dir = os.path.join("results",
-                               "synth_%s_T%d_K%d_N%d_v%d" % (modeltype, T, K, N, version),
-                               "run%03d" % runnum)
+    versions = xrange(1,11)
+    results_types = ["hdphmm_scale", "hdphmm_hmc", "hdphmm_eb", "hdphmm_vb"]
+    # results_types = ["hdphmm_vb"]
+    pll_table = np.zeros((len(versions), len(results_types)))
+    err_table = np.zeros((len(versions), len(results_types)))
 
-    model, S_train, Z_train, S_test, _ = \
-        load_synth_data(T, K, N, T_test=T_test,
-                        model=modeltype, version=version)
+    for i,version in enumerate(versions):
+        results_dir = os.path.join("results",
+                                   "synth_%s_T%d_K%d_N%d_v%d" % (true_model_type, T, K, N, version),
+                                   "run%03d" % runnum)
 
-    # Load results
-    results_types = ["hdphmm_scale", "hdphmm_hmc", "hdphmm_eb"]
+        model, S_train, Z_train, S_test, _ = \
+            load_synth_data(T, K, N, T_test=T_test,
+                            model=true_model_type, version=version)
+
+        # Load results
+        for j,results_type in enumerate(results_types):
+            results_file = os.path.join(results_dir, results_type + ".pkl.gz")
+            print "Loading ", results_file
+            with gzip.open(results_file, "r") as f:
+                results = cPickle.load(f)
+                # print results.N_used[-1]
+
+            pll_table[i,j] = compute_predictive_log_likelihood(S_train, S_test, results)
+
+            # Set the stateseq for vb
+            # if results_type == "hdphmm_vb":
+            #     # results.samples.states_list[0].Viterbi()
+            #     statesobj = results.samples.states_list[0]
+            #     statesobj.resample()
 
 
-    for results_type in results_types:
-        results_file = os.path.join(results_dir, results_type + ".pkl.gz")
-        print "Loading ", results_file
-        with gzip.open(results_file, "r") as f:
-            results = cPickle.load(f)
+            err_table[i,j] = compute_state_overlap(Z_train, results.samples.stateseqs[0], K)
 
-        compute_predictive_log_likelihood(S_train, S_test, [results])
-        compute_state_overlap(Z_train, results.samples.stateseqs[0], K)
-        print ""
+            print ""
 
-        del results
+            del results
+
+    pll_tex = make_table(pll_table.T, results_types, versions, fmt="{0:.3f}")
+    err_tex = make_table(err_table.T, results_types, versions, fmt="{0:.0f}")

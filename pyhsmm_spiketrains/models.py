@@ -416,6 +416,11 @@ class PoissonHDPHMM(_PoissonHMMMixin, pyhsmm.models.WeakLimitHDPHMM):
         super(PoissonHDPHMM, self).__init__(
             obs_distns=_make_obs_distns(K_max, N, alpha_obs, beta_obs), **kwargs)
 
+class PoissonDATruncHDPHMM(_PoissonHMMMixin, pyhsmm.models.DATruncHDPHMM):
+    def __init__(self, N, K_max, alpha_obs=1.0, beta_obs=1.0, **kwargs):
+        super(PoissonDATruncHDPHMM, self).__init__(
+            obs_distns=_make_obs_distns(K_max, N, alpha_obs, beta_obs), **kwargs)
+
 
 class PoissonHSMM(_PoissonHSMMMixin, pyhsmm.models.HSMM):
     # TODO: Override PoissonHMMMixin to use HSMMStates
