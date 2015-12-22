@@ -406,15 +406,30 @@ class PoissonCRPMixture(pybasicbayes.models.CRPMixture):
 
 
 class PoissonHMM(_PoissonHMMMixin, pyhsmm.models.HMM):
-    def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0, **kwargs):
+    def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0,
+                 alpha_a_0=10.0, alpha_b_0=1.0,
+                 init_state_concentration=1.0,
+                 **kwargs):
         super(PoissonHMM, self).__init__(
-            obs_distns=_make_obs_distns(K, N, alpha_obs, beta_obs), **kwargs)
+            obs_distns=_make_obs_distns(K, N, alpha_obs, beta_obs),
+            alpha_a_0=alpha_a_0, alpha_b_0=alpha_b_0,
+            init_state_concentration=init_state_concentration,
+            **kwargs)
 
 
 class PoissonHDPHMM(_PoissonHMMMixin, pyhsmm.models.WeakLimitHDPHMM):
-    def __init__(self, N, K_max, alpha_obs=1.0, beta_obs=1.0, **kwargs):
+    def __init__(self, N, K_max,
+                 alpha_obs=1.0, beta_obs=1.0,
+                 alpha_a_0=10.0, alpha_b_0=1.0,
+                 gamma_a_0=10.0, gamma_b_0=1.0,
+                 init_state_concentration=1.0,
+                 **kwargs):
         super(PoissonHDPHMM, self).__init__(
-            obs_distns=_make_obs_distns(K_max, N, alpha_obs, beta_obs), **kwargs)
+            obs_distns=_make_obs_distns(K_max, N, alpha_obs, beta_obs),
+            alpha_a_0=alpha_a_0, alpha_b_0=alpha_b_0,
+            gamma_a_0=gamma_a_0, gamma_b_0=gamma_b_0,
+            init_state_concentration=init_state_concentration,
+            **kwargs)
 
 class PoissonDATruncHDPHMM(_PoissonHMMMixin, pyhsmm.models.DATruncHDPHMM):
     def __init__(self, N, K_max, alpha_obs=1.0, beta_obs=1.0, **kwargs):
@@ -424,9 +439,15 @@ class PoissonDATruncHDPHMM(_PoissonHMMMixin, pyhsmm.models.DATruncHDPHMM):
 
 class PoissonHSMM(_PoissonHSMMMixin, pyhsmm.models.HSMM):
     # TODO: Override PoissonHMMMixin to use HSMMStates
-    def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0, **kwargs):
+    def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0,
+                 alpha_a_0=10.0, alpha_b_0=1.0,
+                 init_state_concentration=1.0,
+                 **kwargs):
         super(PoissonHSMM, self).__init__(
-            obs_distns=_make_obs_distns(K, N, alpha_obs, beta_obs), **kwargs)
+            obs_distns=_make_obs_distns(K, N, alpha_obs, beta_obs),
+            alpha_a_0=alpha_a_0, alpha_b_0=alpha_b_0,
+            init_state_concentration=init_state_concentration,
+            **kwargs)
 
 
 class PoissonHSMMPoissonDuration(_PoissonHSMMMixin, pyhsmm.models.HSMM):
@@ -458,6 +479,9 @@ class PoissonHSMMPoissonDuration(_PoissonHSMMMixin, pyhsmm.models.HSMM):
 class PoissonHSMMIntNegBinDuration(_PoissonIntNegBinHSMMMixin, pyhsmm.models.HSMMIntNegBin):
     def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0,
                  r_max=10, alpha_dur=10.0, beta_dur=1.0,
+                 alpha_a_0=10.0, alpha_b_0=1.0,
+                 gamma_a_0=10.0, gamma_b_0=1.0,
+                 init_state_concentration=1.0,
                  **kwargs):
 
         # Instantiate Poisson duration distributions
@@ -470,6 +494,9 @@ class PoissonHSMMIntNegBinDuration(_PoissonIntNegBinHSMMMixin, pyhsmm.models.HSM
         super(PoissonHSMMIntNegBinDuration, self).__init__(
             obs_distns=_make_obs_distns(K, N, alpha_obs, beta_obs),
             dur_distns=duration_distns,
+            alpha_a_0=alpha_a_0, alpha_b_0=alpha_b_0,
+            gamma_a_0=gamma_a_0, gamma_b_0=gamma_b_0,
+            init_state_concentration=init_state_concentration,
             **kwargs)
 
     def add_data(self,data,stateseq=None,trunc=30,
@@ -482,9 +509,17 @@ class PoissonHSMMIntNegBinDuration(_PoissonIntNegBinHSMMMixin, pyhsmm.models.HSM
 
 
 class PoissonHDPHSMM(_PoissonHSMMMixin, pyhsmm.models.WeakLimitHDPHSMM):
-    def __init__(self, N, K_max, alpha_obs=1.0, beta_obs=1.0, **kwargs):
+    def __init__(self, N, K_max, alpha_obs=1.0, beta_obs=1.0,
+                alpha_a_0=10.0, alpha_b_0=1.0,
+                gamma_a_0=10.0, gamma_b_0=1.0,
+                init_state_concentration=1.0,
+                 **kwargs):
         super(PoissonHDPHSMM, self).__init__(
-            obs_distns=_make_obs_distns(K_max, N, alpha_obs, beta_obs), **kwargs)
+            obs_distns=_make_obs_distns(K_max, N, alpha_obs, beta_obs),
+            alpha_a_0=alpha_a_0, alpha_b_0=alpha_b_0,
+            gamma_a_0=gamma_a_0, gamma_b_0=gamma_b_0,
+            init_state_concentration=init_state_concentration,
+            **kwargs)
 
 
 

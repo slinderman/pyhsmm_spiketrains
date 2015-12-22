@@ -99,8 +99,8 @@ if __name__ == "__main__":
     N = 50
     T_test = 1000
     runnum = 1
-    versions = xrange(1,11)
-    results_types = ["hdphmm_scale", "hdphmm_hmc", "hdphmm_eb", "hdphmm_vb"]
+    versions = xrange(1,6)
+    results_types = ["hmm", "hmm_vb", "hdphmm_scale", "hdphmm_hmc", "hdphmm_eb", "hdphmm_vb"]
     # results_types = ["hdphmm_vb"]
     pll_table = np.zeros((len(versions), len(results_types)))
     err_table = np.zeros((len(versions), len(results_types)))

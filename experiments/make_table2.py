@@ -95,16 +95,16 @@ N, S_train, pos_train, S_test, pos_test, center, radius = \
     load_hipp_data(dataname=dataset)
 
 # Load results
-runnum = 2
+runnum = 1
 results_dir = os.path.join("results", dataset, "run%03d" % runnum)
-results_types = ["hdphmm_scale", "hdphmm_hmc", "hdphmm_eb",
-                 "hdphmm_scale_alpha_obs0.1",
-                 "hdphmm_scale_alpha_obs0.5",
-                 "hdphmm_scale_alpha_obs1.0",
-                 "hdphmm_scale_alpha_obs2.0",
-                 "hdphmm_scale_alpha_obs2.5",
-                 "hdphmm_scale_alpha_obs5.0",
-                 "hdphmm_scale_alpha_obs10.0"]
+results_types = ["hmm_K25", "hmm_K45", "hmm_K65", "hdphmm_scale", "hdphmm_hmc", "hdphmm_eb", "hdphmm_vb"]
+                 # "hdphmm_scale_alpha_obs0.1",
+                 # "hdphmm_scale_alpha_obs0.5",
+                 # "hdphmm_scale_alpha_obs1.0",
+                 # "hdphmm_scale_alpha_obs2.0",
+                 # "hdphmm_scale_alpha_obs2.5",
+                 # "hdphmm_scale_alpha_obs5.0",
+                 # "hdphmm_scale_alpha_obs10.0"]
 results_list = []
 
 for results_type in results_types:

@@ -152,9 +152,10 @@ def make_hmm_models(N, S_train, Ks=np.arange(5,25, step=5), **kwargs):
     color_list = []
     method_list = []
 
+    assert len(Ks) == 1
     for K in Ks:
         names_list.append("HMM (K=%d)" % K)
-        fnames_list.append("hmm_K%d" % K)
+        fnames_list.append("hmm")
         color_list.append(allcolors[0])
         hmm = \
             pyhsmm_spiketrains.models.PoissonHMM(
@@ -164,6 +165,18 @@ def make_hmm_models(N, S_train, Ks=np.arange(5,25, step=5), **kwargs):
         hmm.add_data(S_train)
         hmm_list.append(hmm)
         method_list.append(fit)
+
+        names_list.append("HMM VB (K=%d)" % K)
+        fnames_list.append("hmm_vb")
+        color_list.append(allcolors[0])
+        hmm = \
+            pyhsmm_spiketrains.models.PoissonHMM(
+                N=N, K=K, alpha=12.0,
+                init_state_concentration=1.0,
+                **kwargs)
+        hmm.add_data(S_train)
+        hmm_list.append(hmm)
+        method_list.append(fit_vb)
 
     return names_list, fnames_list, color_list, hmm_list, method_list
 
@@ -255,6 +268,7 @@ def run_experiment(T, K, N, T_test, modelname, version, runnum):
 
     # Set output parameters
     N = hmm.N
+    K_true = len(hmm.used_states)
 
     print "Running Synthetic Experiment"
     print "Dataset:\t", data_name
@@ -272,7 +286,7 @@ def run_experiment(T, K, N, T_test, modelname, version, runnum):
 
     # Add parametric HMMs
     nl, fnl, cl, ml, mtdl = \
-        make_hmm_models(N, S_train, Ks=np.arange(5,51,step=5),
+        make_hmm_models(N, S_train, Ks=np.array([K_true]),
                         alpha_obs=1.0, beta_obs=1.0)
     names_list.extend(nl)
     fnames_list.extend(fnl)

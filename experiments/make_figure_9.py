@@ -31,14 +31,9 @@ def plot_results(alpha_a_0s, Ks_alpha_a_0,
                  figdir="."):
 
     # Plot the number of inferred states as a function of params
-    fig = create_figure((5,3))
+    fig = create_figure((5,1.5))
 
-    # K vs alpha_a_0
-    # Ks_alpha_a_0 = []
-    # for r in alpha_a_0_results:
-    #     Ks_alpha_a_0.append(r.N_used[-2000:])
-
-    ax = create_axis_at_location(fig, 0.5, 2., 1.8, .8, transparent=True)
+    ax = create_axis_at_location(fig, 0.5, 0.5, 1.8, .8, transparent=True)
     ax.boxplot(Ks_alpha_a_0, positions=np.arange(1,1+len(alpha_a_0s)),
                boxprops=dict(color=allcolors[1]),
                whiskerprops=dict(color=allcolors[0]),
@@ -48,14 +43,9 @@ def plot_results(alpha_a_0s, Ks_alpha_a_0,
     plt.ylim(0,100)
     plt.yticks(np.arange(0,101,20))
     ax.set_xlabel("$a_{\\alpha_0}$")
-    ax.set_ylabel("$K$")
+    ax.set_ylabel("$M$")
 
-    # K vs gamma_a_0
-    # Ks_gamma_a_0 = []
-    # for r in gamma_a_0_results:
-    #     Ks_gamma_a_0.append(r.N_used[-2000:])
-
-    ax = create_axis_at_location(fig, 3., 2., 1.8, .8, transparent=True)
+    ax = create_axis_at_location(fig, 3., 0.5, 1.8, .8, transparent=True)
     ax.boxplot(Ks_gamma_a_0, positions=np.arange(1,1+len(gamma_a_0s)),
                boxprops=dict(color=allcolors[1]),
                whiskerprops=dict(color=allcolors[0]),
@@ -64,25 +54,20 @@ def plot_results(alpha_a_0s, Ks_alpha_a_0,
     plt.xlim(0.5,4.5)
     plt.ylim(0,100)
     plt.yticks(np.arange(0,101,20))
-    ax.set_xlabel("$a_{\\gamma_0}$")
-    ax.set_ylabel("$K$")
+    ax.set_xlabel("$a_{\\gamma}$")
+    ax.set_ylabel("$M$")
 
-    # K vs alpha_obs
-    # Ks_alpha_obs = []
-    # for r in alpha_obs_results:
-    #     Ks_alpha_obs.append(r.N_used[-2000:])
-
-    ax = create_axis_at_location(fig, 1.25, .5, 2.5, .8, transparent=True)
-    ax.boxplot(Ks_alpha_obs, positions=np.arange(1,1+len(alpha_obss)),
-               boxprops=dict(color=allcolors[1]),
-               whiskerprops=dict(color=allcolors[0]),
-               flierprops=dict(color=allcolors[1]))
-    ax.set_xticklabels(alpha_obss)
-    plt.xlim(0.5,7.5)
-    plt.ylim(0,100)
-    plt.yticks(np.arange(0,101,20))
-    ax.set_xlabel("$\\alpha_{c}^{0}$")
-    ax.set_ylabel("$K$")
+    # ax = create_axis_at_location(fig, 1.25, .5, 2.5, .8, transparent=True)
+    # ax.boxplot(Ks_alpha_obs, positions=np.arange(1,1+len(alpha_obss)),
+    #            boxprops=dict(color=allcolors[1]),
+    #            whiskerprops=dict(color=allcolors[0]),
+    #            flierprops=dict(color=allcolors[1]))
+    # ax.set_xticklabels(alpha_obss)
+    # plt.xlim(0.5,7.5)
+    # plt.ylim(0,100)
+    # plt.yticks(np.arange(0,101,20))
+    # ax.set_xlabel("$\\alpha_{c}^{0}$")
+    # ax.set_ylabel("$K$")
 
     # ax = create_axis_at_location(fig, 3., .5, 1.8, .8, transparent=True)
 
