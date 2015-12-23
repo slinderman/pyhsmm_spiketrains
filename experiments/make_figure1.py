@@ -39,6 +39,7 @@ def make_figure1(model, S, Z, A, lmbdas, figdir='.'):
 
     # Plot the spike train
     ax = create_axis_at_location(fig, 1,2.4,2.75,1)
+    plt.figtext(.4/5, 3.3/3.5, "A")
     px = (10,1)
     im = ax.imshow(np.kron(S.T, np.ones(px)),
               cmap='Greys')
@@ -59,6 +60,7 @@ def make_figure1(model, S, Z, A, lmbdas, figdir='.'):
 
     # Add the latent state below
     zax = create_axis_at_location(fig, 1,2.,2.75,.3)
+    plt.figtext(.4/5, 2.3/3.5, "B")
     px = (50,1)
     zim = zax.imshow(np.kron(Z[None,:], np.ones(px)),
               cmap='YlOrRd', vmin=0, vmax=N_used)
@@ -78,6 +80,7 @@ def make_figure1(model, S, Z, A, lmbdas, figdir='.'):
     px = 10
 
     ax = create_axis_at_location(fig, left,bottom,width,height)
+    plt.figtext(.075/5, 1.5/3.5, "C")
     im = _plot_transition_matrix(ax, A)
     ax.set_title('Transition Matrix')
 
@@ -88,6 +91,7 @@ def make_figure1(model, S, Z, A, lmbdas, figdir='.'):
     # Plot the firing rate matrix
     scale = C/float(N_used)
     ax = create_axis_at_location(fig, 3, 0.5, scale*1.0, 1.0)
+    plt.figtext(2.475/5, 1.5/3.5, "D")
     im = ax.imshow(np.kron(lmbdas, np.ones((px,px))), cmap='Greys', interpolation="none")
     ax.set_xlabel('Neuron')
     ax.set_xticks(np.arange(px/2, C*px, step=10*px))
@@ -101,7 +105,7 @@ def make_figure1(model, S, Z, A, lmbdas, figdir='.'):
     # from matplotlib.colorbar import Colorbar
     cbax = create_axis_at_location(fig, 3+scale+0.05, 0.5, 0.1, 1.0)
     Colorbar(cbax, im)
-    # cbax.set_ylabel('Spike count')
+    cbax.set_ylabel('Spikes/bin')
 
     plt.savefig(os.path.join(figdir, "figure1.pdf"))
     plt.savefig(os.path.join(figdir, "figure1.png"))

@@ -67,6 +67,7 @@ def plot_results(true_model,
     ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
     ax.set_xticklabels([0, 1, 2, 3, 4, 5])
     ax.set_ylabel('Number of States')
+    plt.figtext(.05/5, 4.8/5, "A")
 
     # LL vs Iteration
     lls = np.array(results.loglikes[burnin:])
@@ -80,6 +81,7 @@ def plot_results(true_model,
     ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
     ax.set_xticklabels([0, 1, 2, 3, 4, 5])
     ax.set_ylabel('Log Lkhd. $(\\times 10^3)$')
+    plt.figtext(2.5/5, 4.8/5, "B")
 
     # alpha vs Iteration
     # ax = fig.add_subplot(gs[1,:M])
@@ -94,6 +96,7 @@ def plot_results(true_model,
     ax.set_xticklabels([0, 1, 2, 3, 4, 5])
     ax.set_ylim(0,13)
     ax.set_ylabel('$\\alpha_0$')
+    plt.figtext(.05/5, 3.3/5, "C")
 
     # gamma vs Iteration
     # ax = fig.add_subplot(gs[1,M:])
@@ -107,6 +110,7 @@ def plot_results(true_model,
     ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
     ax.set_xticklabels([0, 1, 2, 3, 4, 5])
     ax.set_ylabel('$\\gamma$')
+    plt.figtext(2.5/5, 3.3/5, "D")
 
     # Plot the transition matrix (From the last sample)
     ax = create_axis_at_location(fig, .5, .5, 1., 1.)
@@ -118,6 +122,7 @@ def plot_results(true_model,
     ax.set_yticks(np.arange(px/2,A.shape[0]*px, step=stepK*px))
     ax.set_yticklabels(np.arange(0,A.shape[0], step=stepK))
     ax.set_title('$\\mathbf{P}$')
+    plt.figtext(.05/5, 1.55/5, "E")
 
     # Add colorbar for transition matrix
     # cbax = fig.add_subplot(gs[2, M-1])
@@ -139,16 +144,17 @@ def plot_results(true_model,
     ax.set_xticks(np.arange(px/2,C*px, step=stepC*px))
     ax.set_xticklabels(np.arange(0,C, step=stepC))
     ax.set_title('$\\mathbf{\Lambda}$')
+    plt.figtext(2.5/5, 1.55/5, "F")
 
     # Add colorbar for firing rate matrix
     # cbax = fig.add_subplot(gs[2,-1])
     cbax = create_axis_at_location(fig, 4.4, .5, .1, 1.)
     cbar = Colorbar(cbax, im, label="spikes/bin")
 
-    fig.savefig(os.path.join(figdir, 'figure_3.pdf'))
-    fig.savefig(os.path.join(figdir, 'figure_3.png'))
+    fig.savefig(os.path.join(figdir, 'figure2.pdf'))
+    fig.savefig(os.path.join(figdir, 'figure2.png'))
 
-    print "Plots can be found at %s*.pdf" % os.path.join(figdir, 'figure_3')
+    print "Plots can be found at %s*.pdf" % os.path.join(figdir, 'figure2')
 
 if __name__ == "__main__":
     # Load the data
