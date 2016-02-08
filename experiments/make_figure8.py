@@ -58,8 +58,10 @@ def plot_place_fields(results, pos, center, radius, data,
         dists.append(cd)
 
     # Plot the log likelihood as a function of iteration
-    fig = create_figure((5,2.8))
+    fig = create_figure((5,4))
+    plt.figtext(0.05/5.0, 3.8/4.0, "A")
 
+    toplot = [0, 13, 28, 38]
     for i,c in enumerate([0, 13, 28, 38]):
         left = 1.25 * i + 0.05
         print "Plotting cell ", c
@@ -77,7 +79,7 @@ def plot_place_fields(results, pos, center, radius, data,
         true_place_field.fit_xy(pos[spks, 0], pos[spks, 1])
 
         # Plot the locations of this state
-        ax = create_axis_at_location(fig, left, 1.45, 1.15, 1.15, transparent=True)
+        ax = create_axis_at_location(fig, left, 2.65, 1.15, 1.15, transparent=True)
         remove_plot_labels(ax)
         # Plot the empirical location distribution
         inf_place_field.plot(ax=ax, cmap=cmap, plot_data=True, plot_colorbar=False)
@@ -86,15 +88,81 @@ def plot_place_fields(results, pos, center, radius, data,
                       fontdict={'fontsize' : 9})
 
         # Now plot the true place field
-        ax = create_axis_at_location(fig, left, 0.05, 1.15, 1.15, transparent=True)
+        ax = create_axis_at_location(fig, left, 1.25, 1.15, 1.15, transparent=True)
         remove_plot_labels(ax)
 
         true_place_field.plot(ax=ax, cmap=cmap, plot_data=True, plot_colorbar=False)
         ax.set_title('True Place Field %d' % (c+1),
                       fontdict={'fontsize' : 9})
 
+
+
+    # Plot the KL divergence histogram
+    kls = np.zeros(model.N)
+    tvs = np.zeros(model.N)
+    for c in xrange(model.N):
+        # Compute the inferred place field
+        inf_place_field = dists[0] * lmbdas[0,c] * occupancy[0]
+        for s in range(1,N_used):
+            inf_place_field += dists[s] * lmbdas[s,c] * occupancy[s]
+
+        # inf_place_field = sum([d*(l*o) for d,l,o in zip(dists, lmbdas[c,:], occupancy)])
+        spks = np.array(data[:,c] > 0).ravel()
+        true_place_field = CircularDistribution(center, radius)
+        true_place_field.fit_xy(pos[spks, 0], pos[spks, 1])
+
+        kls[c] = compute_place_field_KL(inf_place_field, true_place_field)
+        tvs[c] = compute_place_field_TV(inf_place_field, true_place_field)
+
+    bin_centers = np.arange(0.006, 0.0141, 0.001)
+    bin_width = 0.001
+    bin_edges = np.concatenate((bin_centers - bin_width/2.0,
+                                [bin_centers[-1] + bin_width/2.0]))
+    ax = create_axis_at_location(fig, 0.5, 0.5, 4., .5, transparent=True)
+    ax.hist(tvs, bins=bin_edges, facecolor=allcolors[1])
+    ax.set_xlim(0.005, 0.015)
+    ax.set_xticks(bin_centers)
+    ax.set_xticklabels(["{0:.3f}".format(bc) if i % 2 == 0 else ""
+                        for i,bc in enumerate(bin_centers)])
+    ax.set_xlabel("$TV(p_{inf}, p_{true})$")
+    ax.set_yticks(np.arange(17, step=4))
+    ax.set_ylabel("Count")
+    plt.figtext(0.05/5.0, 1.1/4.0, "B")
+
+    print "TVs of plotted cells: "
+    print tvs[toplot]
+
+
     # fig.savefig(os.path.join(figdir,'figure8.pdf'))
     fig.savefig(os.path.join(figdir,'figure8.png'))
+    plt.show()
+
+def compute_place_field_KL(dist1, dist2):
+    """
+    Compute KL(p,q) = E_p[log p/q] for p = true dist and q = inf dist
+    :param dist1:
+    :param dist2:
+    :return:
+    """
+    p = dist1.pdf
+    q = dist2.pdf
+    a = dist1.areas
+
+    kl  = (p*a * np.log(p/q)).sum()
+    return kl
+
+def compute_place_field_TV(dist1, dist2):
+    """
+    Compute KL(p,q) = E_p[log p/q] for p = true dist and q = inf dist
+    :param true_dist:
+    :param inf_dist:
+    :return:
+    """
+    p = dist1.pdf
+    q = dist2.pdf
+
+    tv = abs(p-q).sum()
+    return tv
 
 if __name__ == "__main__":
     dataset = "hipp_2dtrack_a"
@@ -102,7 +170,7 @@ if __name__ == "__main__":
         load_hipp_data(dataname=dataset)
 
     # Load results
-    runnum = 2
+    runnum = 1
     results_dir = os.path.join("results", dataset, "run%03d" % runnum)
     results_type = "hdphmm_scale"
     results_file = os.path.join(results_dir, results_type + ".pkl.gz")

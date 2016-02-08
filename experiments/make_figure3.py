@@ -210,7 +210,7 @@ def plot_results(K_true,
     fig = create_figure((5,3))
 
     # K vs num neurons
-    ax = create_axis_at_location(fig, 0.5, 2., 1.8, .8, transparent=True)
+    ax = create_axis_at_location(fig, 0.6, 2., 1.7, .8, transparent=True)
     ax.boxplot(Ks_Ns, positions=np.arange(1,1+len(Ns_test)),
                boxprops=dict(color=allcolors[1]),
                whiskerprops=dict(color=allcolors[0]),
@@ -218,11 +218,13 @@ def plot_results(K_true,
     ax.set_xticklabels(Ns_test)
     ax.plot([0,6], [K_true, K_true], ':k')
     plt.xlim(0.5,5.5)
-    plt.ylim(5,45)
+    plt.ylim(0,100)
     ax.set_xlabel("$C$")
+    ax.set_ylabel("Number of States", labelpad=-0.1)
+    plt.figtext(0.05/5, 2.8/3, "A")
 
     # K vs time
-    ax = create_axis_at_location(fig, 3., 2., 1.8, .8, transparent=True)
+    ax = create_axis_at_location(fig, 3.1, 2., 1.7, .8, transparent=True)
     ax.boxplot(Ks_Ts, positions=np.arange(1,1+len(Ts_test)),
                boxprops=dict(color=allcolors[1]),
                whiskerprops=dict(color=allcolors[0]),
@@ -230,10 +232,13 @@ def plot_results(K_true,
     ax.set_xticklabels(Ts_test)
     ax.plot([0,6], [K_true, K_true], ':k')
     plt.xlim(0.5,5.5)
-    plt.ylim(5,45)
+    plt.ylim(0,100)
     ax.set_xlabel("$T$")
+    ax.set_ylabel("Number of States", labelpad=-0.1)
+    plt.figtext(2.55/5, 2.8/3, "B")
 
-    ax = create_axis_at_location(fig, .5, .5, 1.8, .8, transparent=True)
+
+    ax = create_axis_at_location(fig, .6, .5, 1.7, .8, transparent=True)
     ax.boxplot(Ks_frs, positions=np.arange(1,1+len(frs_test)),
                boxprops=dict(color=allcolors[1]),
                whiskerprops=dict(color=allcolors[0]),
@@ -241,10 +246,12 @@ def plot_results(K_true,
     ax.set_xticklabels(frs_test)
     ax.plot([0,6], [K_true, K_true], ':k')
     plt.xlim(0.5,5.5)
-    plt.ylim(5,45)
+    plt.ylim(0,100)
     ax.set_xlabel("$\lambda$ scale")
+    ax.set_ylabel("Number of States", labelpad=-0.1)
+    plt.figtext(0.05/5, 1.3/3, "C")
 
-    ax = create_axis_at_location(fig, 3., .5, 1.8, .8, transparent=True)
+    ax = create_axis_at_location(fig, 3.1, .5, 1.7, .8, transparent=True)
     ax.boxplot(Ks_dts, positions=np.arange(1, 1+len(dts_test)),
                boxprops=dict(color=allcolors[1]),
                whiskerprops=dict(color=allcolors[0]),
@@ -252,8 +259,10 @@ def plot_results(K_true,
     ax.set_xticklabels(dts_test)
     ax.plot([0,6], [K_true, K_true], ':k')
     plt.xlim(0.5,5.5)
-    plt.ylim(5,45)
+    plt.ylim(0,100)
     ax.set_xlabel("$\Delta t$ scale")
+    ax.set_ylabel("Number of States", labelpad=-0.1)
+    plt.figtext(2.55/5, 1.3/3, "D")
 
     plt.savefig(os.path.join(figdir, "figure2.pdf"))
     plt.savefig(os.path.join(figdir, "figure2.png"))

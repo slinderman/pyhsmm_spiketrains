@@ -30,7 +30,7 @@ Results = namedtuple(
 
 def plot_results(true_model,
                  results,
-                 data, burnin=5,
+                 data, burnin=0,
                  figdir='.'):
     """
     Plot the true and inferred transition matrices using a variety
@@ -162,7 +162,7 @@ if __name__ == "__main__":
     T = 2000
     T_test = 200
     K = 100
-    N = 50
+    N = 1
     version = 1
     runnum = 1
     dataset = "synth_%s_T%d_K%d_N%d_v%d" % (modelname, T, K, N, version)
@@ -171,6 +171,8 @@ if __name__ == "__main__":
     hmm, S_train, _, S_test, _ = \
         load_synth_data(T, K, N, T_test=T_test,
                         model=modelname, version=version)
+    S_train = S_train.reshape((-1,N))
+    S_test = S_test.reshape((-1,N))
 
     # Load results
     results_type = "hdphmm_scale"
