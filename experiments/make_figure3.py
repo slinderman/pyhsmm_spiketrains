@@ -1,19 +1,25 @@
 """
-Plot the MCMC samples for the hippocampal dataset.
+Measure the number of inferred states as a function of:
+    - number of observed neurons
+    - time bin size
+    - length of recording
+    - firing rate
 """
 import os
 import cPickle
-import gzip
-from collections import namedtuple
-
 import numpy as np
+import matplotlib.pyplot as plt
+plt.ion()
+
+from pyhsmm.util.text import progprint_xrange
+from pyhsmm_spiketrains.models import PoissonHDPHMM
 
 import matplotlib
-matplotlib.rcParams.update({'axes.labelsize': 9,
+matplotlib.rcParams.update({'font.sans-serif' : 'Helvetica',
+                            'axes.labelsize': 9,
                             'xtick.labelsize' : 9,
                             'ytick.labelsize' : 9,
                             'axes.titlesize' : 11})
-from matplotlib.colorbar import ColorbarBase, Colorbar
 
 import brewer2mpl
 allcolors = brewer2mpl.get_map("Set1", "Qualitative", 9).mpl_colors
@@ -22,136 +28,249 @@ from hips.plotting.layout import *
 
 from experiment_helper import load_synth_data
 
-Results = namedtuple(
-    "Results", ["name", "loglikes", "predictive_lls",
-                "N_used", "alphas", "gammas",
-                "rates", "obs_hypers",
-                "samples", "timestamps"])
+# Set the random seed for reproducibility
+np.random.seed(0)
+T = 2000
+N = 50
+K = 100
+alpha = 12.0
+gamma = 12.0
+alpha_obs = 1.0
+beta_obs = 1.0
+N_iters = 1000
 
-def plot_results(true_model,
-                 results,
-                 data, burnin=5,
-                 figdir='.'):
+def K_used(model):
+    return (model.state_usages > 0).sum()
+
+def fit_model(data, N_iters, args={}):
+    # Now fit the model with a model using all the data
+
+    default_args = dict(N=N,
+                        K_max=K,
+                        alpha=alpha,
+                        gamma=gamma,
+                        alpha_obs=alpha_obs,
+                        beta_obs=beta_obs,
+                        init_state_concentration=1.0)
+    default_args.update(args)
+    model = PoissonHDPHMM(**default_args)
+    model.add_data(data)
+
+    def _evaluate(model):
+        ll = model.log_likelihood()
+        return ll, K_used(model)
+
+    def _step(model):
+        model.resample_model()
+        return _evaluate(model)
+
+    results = [_step(model) for _ in progprint_xrange(N_iters)]
+    lls = np.array([r[0] for r in results])
+    Ks = np.array([r[1] for r in results])
+    return lls, Ks
+
+def test_all(data):
+    return fit_model(data, N_iters)
+
+def test_N(data, N_test):
     """
-    Plot the true and inferred transition matrices using a variety
-    of inference algorithms.
-
-    :param hmm:
+    :param test_frac: Fraction of all neurons to use for fitting
     :return:
     """
-    N_samples = np.array(results.loglikes).size
+    # Downsample the data
+    test_neurons = np.random.permutation(N)[:N_test]
+    test_data = data[:,test_neurons].copy('C')
+    assert test_data.shape[1] == N_test
 
-    model = results.samples
-    model.relabel_by_usage()
-    N_used = results.N_used[-1]
-    A = model.A[:N_used,:N_used]
-    lmbdas = model.rates[:N_used,:].T
-    C,K = lmbdas.shape
+    return fit_model(test_data, N_iters, args={"N": N_test})
 
-    px = 10
-    stepK = 10
-    stepC = 10
+def test_T(data, T_test):
+    """
+    :param test_frac: Fraction of all neurons to use for fitting
+    :return:
+    """
+    # Downsample the data
+    test_data = data[:T_test,:].copy('C')
+    return fit_model(test_data, N_iters)
 
-    # Plot the log likelihood as a function of iteration
-    fig = create_figure((5,5))
+def test_dt(data, freq):
+    """
+    :param freq: Number of time bins to aggregate
+    :return:
+    """
+    # Aggregate time bins
+    test_data = data.reshape((T//freq, freq, N)).sum(1).copy('C')
+    assert np.all(test_data[0,:] == data[:freq,:].sum(0))
+    return fit_model(test_data, N_iters)
 
-    # Num States vs Iteration
-    # ax = fig.add_subplot(gs[0,:M])
-    ax = create_axis_at_location(fig, 0.5, 3.75, 1.75, 1.)
-    ax.plot(np.arange(burnin, N_samples), results.N_used[burnin:],
-            color=allcolors[1])
-    ax.plot([burnin, N_samples], len(true_model.used_states) * np.ones(2), ':k')
+def test_fr(true_model, scale):
+    # Get the true rate, scale it, and resample the data
+    true_rate = true_model.states_list[0].rate
+    test_rate = scale * true_rate
+    assert np.all(test_rate >= 0)
+    test_data = np.random.poisson(test_rate)
+    return fit_model(test_data, N_iters)
 
-    ax.set_xlabel('Iteration $(\\times 10^3)$')
-    ax.set_xlim([burnin, N_samples])
-    ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
-    ax.set_xticklabels([0, 1, 2, 3, 4, 5])
-    ax.set_ylabel('Number of States')
+def fit_with_subsets_of_data(true_model, data, results_dir,
+                             N_repeats=10):
+    # Generate synth data
+    K_true = K_used(true_model)
 
-    # LL vs Iteration
-    lls = np.array(results.loglikes[burnin:])
-    # ax = fig.add_subplot(gs[0,M:])
-    ax = create_axis_at_location(fig, 3., 3.75, 1.75, 1.)
-    ax.plot(np.arange(burnin, N_samples), lls / 1000.,
-            color=allcolors[1])
-    ax.plot([burnin, N_samples], true_model.log_likelihood(data) * np.ones(2) / 1000., ':k')
-    ax.set_xlabel('Iteration $(\\times 10^3)$')
-    ax.set_xlim([burnin, N_samples])
-    ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
-    ax.set_xticklabels([0, 1, 2, 3, 4, 5])
-    ax.set_ylabel('Log Lkhd. $(\\times 10^3)$')
+    # Experiments with subsets of neurons
+    results_file = os.path.join(results_dir, "Ks_vs_N.pkl")
+    if os.path.exists(results_file):
+        with open(results_file, "r") as f:
+            Ns_test, Ks_Ns, _ = cPickle.load(f)
+    else:
+        Ns_test = (np.array([0.1, 0.2, 0.5, 0.8, 1.0]) * N).astype(np.int)
+        Ks_Ns = []
+        for N_test in Ns_test:
+            Ks_N = []
+            for rpt in xrange(N_repeats):
+                print "N_test: ", N_test, ". Repeat: ", rpt
+                _, Ks = test_N(data, N_test)
+                Ks_N.append(Ks[-1])
+            Ks_Ns.append(Ks_N)
 
-    # alpha vs Iteration
-    # ax = fig.add_subplot(gs[1,:M])
-    ax = create_axis_at_location(fig, .5, 2.25, 1.75, 1.)
-    ax.plot(np.arange(burnin, N_samples), results.alphas[burnin:],
-            color=allcolors[1])
-    ax.plot([burnin, N_samples], true_model.trans_distn.alpha * np.ones(2), ':k')
+        with open(results_file, "w") as f:
+            cPickle.dump((Ns_test, Ks_Ns, K_true), f, protocol=-1)
 
-    ax.set_xlabel('Iteration $(\\times 10^3)$')
-    ax.set_xlim([burnin, N_samples])
-    ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
-    ax.set_xticklabels([0, 1, 2, 3, 4, 5])
-    ax.set_ylim(0,13)
-    ax.set_ylabel('$\\alpha_0$')
+    # Experiments with subsets of time bins
+    results_file = os.path.join(results_dir, "Ks_vs_T.pkl")
+    if os.path.exists(results_file):
+        with open(results_file, "r") as f:
+            Ts_test, Ks_Ts, _ = cPickle.load(f)
+    else:
+        Ts_test = (np.array([0.1, 0.2, 0.5, 0.8, 1.0]) * T).astype(np.int)
+        Ks_Ts = []
+        for T_test in Ts_test:
+            Ks_T = []
+            for rpt in xrange(N_repeats):
+                print "T_test: ", T_test, ". Repeat: ", rpt
+                _, Ks = test_T(data, T_test)
+                Ks_T.append(Ks[-1])
+            Ks_Ts.append(Ks_T)
 
-    # gamma vs Iteration
-    # ax = fig.add_subplot(gs[1,M:])
-    ax = create_axis_at_location(fig, 3., 2.25, 1.75, 1.)
-    ax.plot(np.arange(burnin, N_samples), results.gammas[burnin:],
-            color=allcolors[1])
-    ax.plot([burnin, N_samples], true_model.trans_distn.gamma * np.ones(2), ':k')
+        with open(results_file, "w") as f:
+            cPickle.dump((Ts_test, Ks_Ts, K_true), f, protocol=-1)
 
-    ax.set_xlabel('Iteration $(\\times 10^3)$')
-    ax.set_xlim([burnin, N_samples])
-    ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
-    ax.set_xticklabels([0, 1, 2, 3, 4, 5])
-    ax.set_ylabel('$\\gamma$')
+    # Experiments with varying firing rates
+    results_file = os.path.join(results_dir, "Ks_vs_fr.pkl")
+    if os.path.exists(results_file):
+        with open(results_file, "r") as f:
+            frs_test, Ks_frs, _ = cPickle.load(f)
+    else:
+        frs_test = np.array([0.1, 0.5, 1.0, 2.0, 10.0])
+        Ks_frs = []
+        for fr_test in frs_test:
+            Ks_fr = []
+            for rpt in xrange(N_repeats):
+                print "fr_test: ", fr_test, ". Repeat: ", rpt
+                _, Ks = test_fr(true_model, fr_test)
+                Ks_fr.append(Ks[-1])
+            Ks_frs.append(Ks_fr)
 
-    # Plot the transition matrix (From the last sample)
-    ax = create_axis_at_location(fig, .5, .5, 1., 1.)
-    im = ax.imshow(np.kron(A, np.ones((px,px))), cmap='Greys')
-    ax.set_xlabel('$S_{t+1}$')
-    ax.set_xticks(np.arange(px/2,A.shape[1]*px, step=stepK*px))
-    ax.set_xticklabels(np.arange(0,A.shape[1], step=stepK))
-    ax.set_ylabel('$S_{t}$')
-    ax.set_yticks(np.arange(px/2,A.shape[0]*px, step=stepK*px))
-    ax.set_yticklabels(np.arange(0,A.shape[0], step=stepK))
-    ax.set_title('$\\mathbf{P}$')
+        with open(results_file, "w") as f:
+            cPickle.dump((frs_test, Ks_frs, K_true), f, protocol=-1)
 
-    # Add colorbar for transition matrix
-    # cbax = fig.add_subplot(gs[2, M-1])
-    cbax = create_axis_at_location(fig, 1.65, .5, .1, 1.)
-    cbar = ColorbarBase(cbax, cmap='Greys',
-                        values=np.linspace(0, 1),
-                        boundaries=np.linspace(0, 1),
-                        ticks=np.linspace(0,1,6))
+    # Experiments with varying time bin size
+    results_file = os.path.join(results_dir, "Ks_vs_dt.pkl")
+    if os.path.exists(results_file):
+        with open(results_file, "r") as f:
+            dts_test, Ks_dts, _ = cPickle.load(f)
+    else:
 
-    # Plot the firing rates (From the last sample)
-    px = 10
-    # ax = fig.add_subplot(gs[2,M:-1])
-    ax = create_axis_at_location(fig, 3, .5, 1.3, 1.)
-    im = ax.imshow(np.kron(lmbdas.T, np.ones((px,px))), cmap='Greys')
-    ax.set_ylabel('State')
-    ax.set_yticks(np.arange(px/2,K*px, step=stepK*px))
-    ax.set_yticklabels(np.arange(0,K, step=stepK))
-    ax.set_xlabel('Neuron')
-    ax.set_xticks(np.arange(px/2,C*px, step=stepC*px))
-    ax.set_xticklabels(np.arange(0,C, step=stepC))
-    ax.set_title('$\\mathbf{\Lambda}$')
+        dts_test = np.array([1,2,4,5,10])
+        Ks_dts = []
+        for dt_test in dts_test:
+            Ks_dt = []
+            for rpt in xrange(N_repeats):
+                print "dt_test: ", dt_test, ". Repeat: ", rpt
+                _, Ks = test_dt(data, dt_test)
+                Ks_dt.append(Ks[-1])
+            Ks_dts.append(Ks_dt)
 
-    # Add colorbar for firing rate matrix
-    # cbax = fig.add_subplot(gs[2,-1])
-    cbax = create_axis_at_location(fig, 4.4, .5, .1, 1.)
-    cbar = Colorbar(cbax, im, label="spikes/bin")
+        with open(results_file, "w") as f:
+            cPickle.dump((dts_test, Ks_dts, K_true), f, protocol=-1)
 
-    fig.savefig(os.path.join(figdir, 'figure_3.pdf'))
-    fig.savefig(os.path.join(figdir, 'figure_3.png'))
+    return K_true, \
+           Ns_test, Ks_Ns, \
+           Ts_test, Ks_Ts, \
+           frs_test, Ks_frs, \
+           dts_test, Ks_dts
 
-    print "Plots can be found at %s*.pdf" % os.path.join(figdir, 'figure_3')
+def plot_results(K_true,
+                 Ns_test, Ks_Ns,
+                 Ts_test, Ks_Ts,
+                 frs_test, Ks_frs,
+                 dts_test, Ks_dts,
+                 figdir="."):
+
+    # Plot the number of inferred states as a function of params
+    fig = create_figure((5,3))
+
+    # K vs num neurons
+    ax = create_axis_at_location(fig, 0.6, 2., 1.7, .8, transparent=True)
+    ax.boxplot(Ks_Ns, positions=np.arange(1,1+len(Ns_test)),
+               boxprops=dict(color=allcolors[1]),
+               whiskerprops=dict(color=allcolors[0]),
+               flierprops=dict(color=allcolors[1]))
+    ax.set_xticklabels(Ns_test)
+    ax.plot([0,6], [K_true, K_true], ':k')
+    plt.xlim(0.5,5.5)
+    plt.ylim(0,100)
+    ax.set_xlabel("$C$")
+    ax.set_ylabel("Number of States", labelpad=-0.1)
+    plt.figtext(0.05/5, 2.8/3, "A")
+
+    # K vs time
+    ax = create_axis_at_location(fig, 3.1, 2., 1.7, .8, transparent=True)
+    ax.boxplot(Ks_Ts, positions=np.arange(1,1+len(Ts_test)),
+               boxprops=dict(color=allcolors[1]),
+               whiskerprops=dict(color=allcolors[0]),
+               flierprops=dict(color=allcolors[1]))
+    ax.set_xticklabels(Ts_test)
+    ax.plot([0,6], [K_true, K_true], ':k')
+    plt.xlim(0.5,5.5)
+    plt.ylim(0,100)
+    ax.set_xlabel("$T$")
+    ax.set_ylabel("Number of States", labelpad=-0.1)
+    plt.figtext(2.55/5, 2.8/3, "B")
+
+
+    ax = create_axis_at_location(fig, .6, .5, 1.7, .8, transparent=True)
+    ax.boxplot(Ks_frs, positions=np.arange(1,1+len(frs_test)),
+               boxprops=dict(color=allcolors[1]),
+               whiskerprops=dict(color=allcolors[0]),
+               flierprops=dict(color=allcolors[1]))
+    ax.set_xticklabels(frs_test)
+    ax.plot([0,6], [K_true, K_true], ':k')
+    plt.xlim(0.5,5.5)
+    plt.ylim(0,100)
+    ax.set_xlabel("$\lambda$ scale")
+    ax.set_ylabel("Number of States", labelpad=-0.1)
+    plt.figtext(0.05/5, 1.3/3, "C")
+
+    ax = create_axis_at_location(fig, 3.1, .5, 1.7, .8, transparent=True)
+    ax.boxplot(Ks_dts, positions=np.arange(1, 1+len(dts_test)),
+               boxprops=dict(color=allcolors[1]),
+               whiskerprops=dict(color=allcolors[0]),
+               flierprops=dict(color=allcolors[1]))
+    ax.set_xticklabels(dts_test)
+    ax.plot([0,6], [K_true, K_true], ':k')
+    plt.xlim(0.5,5.5)
+    plt.ylim(0,100)
+    ax.set_xlabel("$\Delta t$ scale")
+    ax.set_ylabel("Number of States", labelpad=-0.1)
+    plt.figtext(2.55/5, 1.3/3, "D")
+
+    plt.savefig(os.path.join(figdir, "figure2.pdf"))
+    plt.savefig(os.path.join(figdir, "figure2.png"))
+
 
 if __name__ == "__main__":
     # Load the data
+    N_repeats = 10
     modelname = "hdp-hmm"
     T = 2000
     T_test = 200
@@ -162,16 +281,11 @@ if __name__ == "__main__":
     dataset = "synth_%s_T%d_K%d_N%d_v%d" % (modelname, T, K, N, version)
     results_dir = os.path.join("results", dataset, "run%03d" % runnum)
 
-    hmm, S_train, _, S_test, _ = \
+    true_model, data, _, _, _ = \
         load_synth_data(T, K, N, T_test=T_test,
                         model=modelname, version=version)
 
-    # Load results
-    results_type = "hdphmm_scale"
-    results_file = os.path.join(results_dir, results_type + ".pkl.gz")
-    with gzip.open(results_file, "r") as f:
-        results = cPickle.load(f)
+    res = fit_with_subsets_of_data(true_model, data, results_dir, N_repeats)
+    plot_results(*res, figdir=results_dir)
 
-    plot_results(hmm, results,
-                 S_train,
-                 figdir=results_dir)
+

@@ -92,48 +92,47 @@ def fit(name, model, test_data, N_iter=1000, init_state_seq=None):
                    rates, obs_hypers,
                    model.copy_sample(), timestamps)
 
-def plot_predictive_log_likelihoods(results, colors, burnin=50, baseline=0):
-    plt.figure()
-    plt.subplot(121)
-    for res, color in zip(results, colors):
-        plt.plot(res.timestamps, res.predictive_lls, color=color, label=res.name)
 
-    plt.xlabel("time (s)")
-    plt.ylabel("predictive log lkhd")
-    # plt.legend(loc="lower right")
+def fit_vb(name, model, test_data, N_iter=1000, init_state_seq=None):
+    def evaluate(model):
+        ll = model.log_likelihood()
+        pll = model.log_likelihood(test_data)
+        N_used = len(model.used_states)
+        trans = model.trans_distn
+        alpha = trans.alpha
+        gamma = trans.gamma if hasattr(trans, "gamma") else None
+        rates = model.rates.copy()
+        obs_hypers = model.obs_hypers
+        # print 'N_states: {}, \tPLL:{}\n'.format(len(model.used_states), pll),
+        return ll, pll, N_used, alpha, gamma, rates, obs_hypers
 
-    plt.subplot(122)
-    min_pll = np.inf
-    max_pll = -np.inf
-    for i, (res, color) in enumerate(zip(results, colors)):
-        plls = np.array(res.predictive_lls[burnin:])
-        # y = plls.mean() - baseline
-        # yerr = plls.std()
-        y = log_expected_pll(plls) - baseline
-        yerr = 0
-        plt.bar(i, y,
-                yerr=yerr,
-                width=0.9, color=color, ecolor='k',
-                label=res.name)
+    def sample(model):
+        tic = time.time()
+        model.meanfield_coordinate_descent_step()
+        timestep = time.time() - tic
 
-        min_pll = min(min_pll, y)
-        max_pll = max(max_pll, y)
+        # Resample from mean field posterior
+        model._resample_from_mf()
 
-    # plt.legend(loc="lower right")
-    plt.xlabel("model")
-    plt.xticks([])
-    plt.ylabel("predictive log lkhd")
-    plt.ylim(min_pll - 0.1 * (max_pll-min_pll),
-             max_pll + 0.1 * (max_pll-min_pll))
-    plt.show()
+        return evaluate(model), timestep
 
-# def save_git_info(output_dir):
-#     import git
-#     repo = git.Repo(".")
-#     commit_id = str(repo.head.commit)
-#
-#     with open(os.path.join(output_dir, "readme.md"), "w") as f:
-#         f.writelines(["git commit: ", commit_id])
+    # Initialize with given state seq
+    if init_state_seq is not None:
+        model.states_list[0].stateseq = init_state_seq
+        for _ in xrange(100):
+            model.resample_obs_distns()
+
+    init_val = evaluate(model)
+    vals, timesteps = zip(*[sample(model) for _ in progprint_xrange(200)])
+
+    lls, plls, N_used, alphas, gammas, rates, obs_hypers = \
+        zip(*((init_val,) + vals))
+    timestamps = np.cumsum((0.,) + timesteps)
+
+    return Results(name, lls, plls, N_used, alphas, gammas,
+                   rates, obs_hypers,
+                   model.copy_sample(), timestamps)
+
 
 def make_hmm_models(N, S_train, Ks=np.arange(5,25, step=5), **kwargs):
     # Define a sequence of models
@@ -162,6 +161,7 @@ def make_hdphmm_models(N, S_train, K_max=100, alpha_obs=1.0, beta_obs=1.0):
     fnames_list = []
     hmm_list = []
     color_list = []
+    method_list = []
 
     # Standard HDP-HMM (Scale resampling)
     names_list.append("HDP-HMM (Scale)")
@@ -171,12 +171,13 @@ def make_hdphmm_models(N, S_train, K_max=100, alpha_obs=1.0, beta_obs=1.0):
         pyhsmm_spiketrains.models.PoissonHDPHMM(
             N=N, K_max=K_max,
             alpha_a_0=5.0, alpha_b_0=1.0,
-            gamma_a_0=8.0, gamma_b_0=1.0,
+            gamma_a_0=5.0, gamma_b_0=1.0,
             init_state_concentration=1.0,
             alpha_obs=alpha_obs,
             beta_obs=beta_obs)
     hmm.add_data(S_train)
     hmm_list.append(hmm)
+    method_list.append(fit)
 
     # Vary the hyperparameters of the scale resampling model
     for alpha_a_0 in [1.0, 5.0, 10.0, 100.0]:
@@ -193,6 +194,7 @@ def make_hdphmm_models(N, S_train, K_max=100, alpha_obs=1.0, beta_obs=1.0):
                 beta_obs=beta_obs)
         hmm.add_data(S_train)
         hmm_list.append(hmm)
+        method_list.append(fit)
 
     for gamma_a_0 in [1.0, 5.0, 10.0, 100.0]:
         names_list.append("HDP-HMM (Scale)")
@@ -208,21 +210,22 @@ def make_hdphmm_models(N, S_train, K_max=100, alpha_obs=1.0, beta_obs=1.0):
                 beta_obs=beta_obs)
         hmm.add_data(S_train)
         hmm_list.append(hmm)
-
-    for new_alpha_obs in [0.1, 0.5, 1.0, 2.0, 2.5, 5.0, 10.0]:
-        names_list.append("HDP-HMM (Scale) (alpha_obs=%.1f)" % new_alpha_obs)
-        fnames_list.append("hdphmm_scale_alpha_obs%.1f" % new_alpha_obs)
-        color_list.append(allcolors[1])
-        hmm = \
-            pyhsmm_spiketrains.models.PoissonHDPHMM(
-                N=N, K_max=K_max,
-                alpha_a_0=5.0, alpha_b_0=1.0,
-                gamma_a_0=5.0, gamma_b_0=1.0,
-                init_state_concentration=1.0,
-                alpha_obs=new_alpha_obs,
-                beta_obs=beta_obs)
-        hmm.add_data(S_train)
-        hmm_list.append(hmm)
+        method_list.append(fit)
+    #
+    # for new_alpha_obs in [0.1, 0.5, 1.0, 2.0, 2.5, 5.0, 10.0]:
+    #     names_list.append("HDP-HMM (Scale) (alpha_obs=%.1f)" % new_alpha_obs)
+    #     fnames_list.append("hdphmm_scale_alpha_obs%.1f" % new_alpha_obs)
+    #     color_list.append(allcolors[1])
+    #     hmm = \
+    #         pyhsmm_spiketrains.models.PoissonHDPHMM(
+    #             N=N, K_max=K_max,
+    #             alpha_a_0=5.0, alpha_b_0=1.0,
+    #             gamma_a_0=5.0, gamma_b_0=1.0,
+    #             init_state_concentration=1.0,
+    #             alpha_obs=new_alpha_obs,
+    #             beta_obs=beta_obs)
+    #     hmm.add_data(S_train)
+    #     hmm_list.append(hmm)
 
     # HDP-HMM with HMC for hyperparameters
     names_list.append("HDP-HMM (HMC)")
@@ -239,6 +242,7 @@ def make_hdphmm_models(N, S_train, K_max=100, alpha_obs=1.0, beta_obs=1.0):
     hmm.add_data(S_train)
     hmm._resample_obs_method = "resample_obs_hypers_hmc"
     hmm_list.append(hmm)
+    method_list.append(fit)
 
     # HDP-HMM with hypers set by empirical bayes
     names_list.append("HDP-HMM (EB)")
@@ -256,14 +260,31 @@ def make_hdphmm_models(N, S_train, K_max=100, alpha_obs=1.0, beta_obs=1.0):
     hmm.init_obs_hypers_via_empirical_bayes()
     hmm._resample_obs_method = "resample_obs_hypers_null"
     hmm_list.append(hmm)
+    method_list.append(fit)
 
-    return names_list, fnames_list, color_list, hmm_list
+    names_list.append("HDP-HMM (VB)")
+    fnames_list.append("hdphmm_vb")
+    color_list.append(allcolors[1])
+    hmm = \
+        pyhsmm_spiketrains.models.PoissonDATruncHDPHMM(
+            N=N, K_max=K_max,
+            alpha=12.0,
+            gamma=12.0,
+            init_state_concentration=1.0,
+            alpha_obs=alpha_obs,
+            beta_obs=beta_obs)
+    hmm.add_data(S_train, stateseq=np.random.randint(50, size=(S_train.shape[0],)))
+    hmm.init_obs_hypers_via_empirical_bayes()
+    hmm_list.append(hmm)
+    method_list.append(fit_vb)
+
+    return names_list, fnames_list, color_list, hmm_list, method_list
 
 
 def run_experiment():
     # Set output parameters
     dataname = "hipp_2dtrack_a"
-    runnum = 2
+    runnum = 1
     output_dir = os.path.join("results", dataname, "run%03d" % runnum)
     assert os.path.exists(output_dir)
 
@@ -288,6 +309,7 @@ def run_experiment():
     fnames_list = []
     color_list = []
     model_list = []
+    method_list = []
 
     # Add parametric HMMs
     # nl, fnl, cl, ml = \
@@ -299,18 +321,19 @@ def run_experiment():
     # model_list.extend(ml)
 
     # Add HDP_HMMs
-    nl, fnl, cl, ml = \
+    nl, fnl, cl, ml, mthdl = \
         make_hdphmm_models(N, S_train, K_max=100,
                            alpha_obs=1.0, beta_obs=1.0)
     names_list.extend(nl)
     fnames_list.extend(fnl)
     color_list.extend(cl)
     model_list.extend(ml)
+    method_list.extend(mthdl)
 
     # Fit the models with Gibbs sampling
     N_iter = 5000
-    for model_name, model_fname, model in \
-            zip(names_list, fnames_list, model_list):
+    for model_name, model_fname, model, method in \
+            zip(names_list, fnames_list, model_list, method_list):
         print "Model: ", model_name
         print "File:  ", model_fname
         print ""
@@ -324,7 +347,7 @@ def run_experiment():
             print "Results already exist at: ", output_file
 
         else:
-            res = fit(model_name, model, S_test, N_iter=N_iter)
+            res = method(model_name, model, S_test, N_iter=N_iter)
 
             # Save results
             with gzip.open(output_file, "w") as f:

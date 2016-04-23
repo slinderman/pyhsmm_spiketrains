@@ -7,16 +7,12 @@ import gzip
 from collections import namedtuple
 
 import numpy as np
-from scipy.io import loadmat
 
 import matplotlib
 matplotlib.rcParams.update({'axes.labelsize': 9,
                             'xtick.labelsize' : 9,
                             'ytick.labelsize' : 9,
                             'axes.titlesize' : 11})
-
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from matplotlib.colorbar import ColorbarBase, Colorbar
 
 import brewer2mpl
@@ -24,9 +20,7 @@ allcolors = brewer2mpl.get_map("Set1", "Qualitative", 9).mpl_colors
 
 from hips.plotting.layout import *
 
-from pyhsmm_spiketrains.internals.utils import split_train_test
-
-from experiment_helper import load_hipp_data
+from experiment_helper import load_synth_data
 
 Results = namedtuple(
     "Results", ["name", "loglikes", "predictive_lls",
@@ -34,8 +28,9 @@ Results = namedtuple(
                 "rates", "obs_hypers",
                 "samples", "timestamps"])
 
-def plot_results(results,
-                 data, burnin=5,
+def plot_results(true_model,
+                 results,
+                 data, burnin=0,
                  figdir='.'):
     """
     Plot the true and inferred transition matrices using a variety
@@ -54,7 +49,7 @@ def plot_results(results,
     C,K = lmbdas.shape
 
     px = 10
-    stepK = 25
+    stepK = 10
     stepC = 10
 
     # Plot the log likelihood as a function of iteration
@@ -65,6 +60,8 @@ def plot_results(results,
     ax = create_axis_at_location(fig, 0.5, 3.75, 1.75, 1.)
     ax.plot(np.arange(burnin, N_samples), results.N_used[burnin:],
             color=allcolors[1])
+    ax.plot([burnin, N_samples], len(true_model.used_states) * np.ones(2), ':k')
+
     ax.set_xlabel('Iteration $(\\times 10^3)$')
     ax.set_xlim([burnin, N_samples])
     ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
@@ -78,6 +75,7 @@ def plot_results(results,
     ax = create_axis_at_location(fig, 3., 3.75, 1.75, 1.)
     ax.plot(np.arange(burnin, N_samples), lls / 1000.,
             color=allcolors[1])
+    ax.plot([burnin, N_samples], true_model.log_likelihood(data) * np.ones(2) / 1000., ':k')
     ax.set_xlabel('Iteration $(\\times 10^3)$')
     ax.set_xlim([burnin, N_samples])
     ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
@@ -90,10 +88,13 @@ def plot_results(results,
     ax = create_axis_at_location(fig, .5, 2.25, 1.75, 1.)
     ax.plot(np.arange(burnin, N_samples), results.alphas[burnin:],
             color=allcolors[1])
+    ax.plot([burnin, N_samples], true_model.trans_distn.alpha * np.ones(2), ':k')
+
     ax.set_xlabel('Iteration $(\\times 10^3)$')
     ax.set_xlim([burnin, N_samples])
     ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
     ax.set_xticklabels([0, 1, 2, 3, 4, 5])
+    ax.set_ylim(0,13)
     ax.set_ylabel('$\\alpha_0$')
     plt.figtext(.05/5, 3.3/5, "C")
 
@@ -102,6 +103,8 @@ def plot_results(results,
     ax = create_axis_at_location(fig, 3., 2.25, 1.75, 1.)
     ax.plot(np.arange(burnin, N_samples), results.gammas[burnin:],
             color=allcolors[1])
+    ax.plot([burnin, N_samples], true_model.trans_distn.gamma * np.ones(2), ':k')
+
     ax.set_xlabel('Iteration $(\\times 10^3)$')
     ax.set_xlim([burnin, N_samples])
     ax.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
@@ -133,39 +136,50 @@ def plot_results(results,
     px = 10
     # ax = fig.add_subplot(gs[2,M:-1])
     ax = create_axis_at_location(fig, 3, .5, 1.3, 1.)
-    im = ax.imshow(np.kron(lmbdas, np.ones((px,px))), cmap='Greys')
-    ax.set_xlabel('State')
-    ax.set_xticks(np.arange(px/2,K*px, step=stepK*px))
-    ax.set_xticklabels(np.arange(0,K, step=stepK))
-    ax.set_ylabel('Cell')
-    ax.set_yticks(np.arange(px/2,C*px, step=stepC*px))
-    ax.set_yticklabels(np.arange(0,C, step=stepC))
+    im = ax.imshow(np.kron(lmbdas.T, np.ones((px,px))), cmap='Greys')
+    ax.set_ylabel('State')
+    ax.set_yticks(np.arange(px/2,K*px, step=stepK*px))
+    ax.set_yticklabels(np.arange(0,K, step=stepK))
+    ax.set_xlabel('Neuron')
+    ax.set_xticks(np.arange(px/2,C*px, step=stepC*px))
+    ax.set_xticklabels(np.arange(0,C, step=stepC))
     ax.set_title('$\\mathbf{\Lambda}$')
     plt.figtext(2.5/5, 1.55/5, "F")
 
     # Add colorbar for firing rate matrix
     # cbax = fig.add_subplot(gs[2,-1])
     cbax = create_axis_at_location(fig, 4.4, .5, .1, 1.)
-    cbar = Colorbar(cbax, im, ticks=np.arange(0,16.1, step=1), label="spikes/bin")
+    cbar = Colorbar(cbax, im, label="spikes/bin")
 
-    fig.savefig(os.path.join(figdir, 'figure6.pdf'))
-    fig.savefig(os.path.join(figdir, 'figure6.png'))
+    fig.savefig(os.path.join(figdir, 'figure2.pdf'))
+    fig.savefig(os.path.join(figdir, 'figure2.png'))
 
-    print "Plots can be found at %s*.pdf" % os.path.join(figdir, 'figure6')
+    print "Plots can be found at %s*.pdf" % os.path.join(figdir, 'figure2')
 
-# Figure 7: Hippocampal inference trajectories
-dataset = "hipp_2dtrack_a"
-N, S_train, pos_train, S_test, pos_test, center, radius = \
-    load_hipp_data(dataname=dataset)
+if __name__ == "__main__":
+    # Load the data
+    modelname = "hdp-hmm"
+    T = 2000
+    T_test = 200
+    K = 100
+    N = 1
+    version = 1
+    runnum = 1
+    dataset = "synth_%s_T%d_K%d_N%d_v%d" % (modelname, T, K, N, version)
+    results_dir = os.path.join("results", dataset, "run%03d" % runnum)
 
-# Load results
-runnum = 1
-results_dir = os.path.join("results", dataset, "run%03d" % runnum)
-results_type = "hdphmm_scale"
-results_file = os.path.join(results_dir, results_type + ".pkl.gz")
-with gzip.open(results_file, "r") as f:
-    results = cPickle.load(f)
+    hmm, S_train, _, S_test, _ = \
+        load_synth_data(T, K, N, T_test=T_test,
+                        model=modelname, version=version)
+    S_train = S_train.reshape((-1,N))
+    S_test = S_test.reshape((-1,N))
 
-plot_results(results,
-             S_train,
-             figdir=results_dir)
+    # Load results
+    results_type = "hdphmm_scale"
+    results_file = os.path.join(results_dir, results_type + ".pkl.gz")
+    with gzip.open(results_file, "r") as f:
+        results = cPickle.load(f)
+
+    plot_results(hmm, results,
+                 S_train,
+                 figdir=results_dir)

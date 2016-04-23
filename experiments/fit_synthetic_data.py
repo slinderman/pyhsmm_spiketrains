@@ -109,41 +109,6 @@ def fit_vb(name, model, test_data, N_iter=1000, init_state_seq=None):
                    rates, obs_hypers,
                    model.copy_sample(), timestamps)
 
-def plot_predictive_log_likelihoods(results, colors, burnin=50, baseline=0):
-    plt.figure()
-    plt.subplot(121)
-    for res, color in zip(results, colors):
-        plt.plot(res.timestamps, res.predictive_lls, color=color, label=res.name)
-
-    plt.xlabel("time (s)")
-    plt.ylabel("predictive log lkhd")
-    # plt.legend(loc="lower right")
-
-    plt.subplot(122)
-    min_pll = np.inf
-    max_pll = -np.inf
-    for i, (res, color) in enumerate(zip(results, colors)):
-        plls = np.array(res.predictive_lls[burnin:])
-        # y = plls.mean() - baseline
-        # yerr = plls.std()
-        y = log_expected_pll(plls) - baseline
-        yerr = 0
-        plt.bar(i, y,
-                yerr=yerr,
-                width=0.9, color=color, ecolor='k',
-                label=res.name)
-
-        min_pll = min(min_pll, y)
-        max_pll = max(max_pll, y)
-
-    # plt.legend(loc="lower right")
-    plt.xlabel("model")
-    plt.xticks([])
-    plt.ylabel("predictive log lkhd")
-    plt.ylim(min_pll - 0.1 * (max_pll-min_pll),
-             max_pll + 0.1 * (max_pll-min_pll))
-    plt.show()
-
 def make_hmm_models(N, S_train, Ks=np.arange(5,25, step=5), **kwargs):
     # Define a sequence of models
     names_list = []
@@ -152,9 +117,10 @@ def make_hmm_models(N, S_train, Ks=np.arange(5,25, step=5), **kwargs):
     color_list = []
     method_list = []
 
+    assert len(Ks) == 1
     for K in Ks:
         names_list.append("HMM (K=%d)" % K)
-        fnames_list.append("hmm_K%d" % K)
+        fnames_list.append("hmm")
         color_list.append(allcolors[0])
         hmm = \
             pyhsmm_spiketrains.models.PoissonHMM(
@@ -164,6 +130,18 @@ def make_hmm_models(N, S_train, Ks=np.arange(5,25, step=5), **kwargs):
         hmm.add_data(S_train)
         hmm_list.append(hmm)
         method_list.append(fit)
+
+        names_list.append("HMM VB (K=%d)" % K)
+        fnames_list.append("hmm_vb")
+        color_list.append(allcolors[0])
+        hmm = \
+            pyhsmm_spiketrains.models.PoissonHMM(
+                N=N, K=K, alpha=12.0,
+                init_state_concentration=1.0,
+                **kwargs)
+        hmm.add_data(S_train)
+        hmm_list.append(hmm)
+        method_list.append(fit_vb)
 
     return names_list, fnames_list, color_list, hmm_list, method_list
 
@@ -253,8 +231,12 @@ def run_experiment(T, K, N, T_test, modelname, version, runnum):
         load_synth_data(T, K, N, T_test=T_test,
                         model=modelname, version=version)
 
+    S_train = S_train.reshape((-1, N))
+    S_test = S_test.reshape((-1, N))
+
     # Set output parameters
     N = hmm.N
+    K_true = len(hmm.used_states)
 
     print "Running Synthetic Experiment"
     print "Dataset:\t", data_name
@@ -271,14 +253,14 @@ def run_experiment(T, K, N, T_test, modelname, version, runnum):
     method_list = []
 
     # Add parametric HMMs
-    nl, fnl, cl, ml, mtdl = \
-        make_hmm_models(N, S_train, Ks=np.arange(5,51,step=5),
-                        alpha_obs=1.0, beta_obs=1.0)
-    names_list.extend(nl)
-    fnames_list.extend(fnl)
-    color_list.extend(cl)
-    model_list.extend(ml)
-    method_list.extend(mtdl)
+    # nl, fnl, cl, ml, mtdl = \
+    #     make_hmm_models(N, S_train, Ks=np.array([K_true]),
+    #                     alpha_obs=1.0, beta_obs=1.0)
+    # names_list.extend(nl)
+    # fnames_list.extend(fnl)
+    # color_list.extend(cl)
+    # model_list.extend(ml)
+    # method_list.extend(mtdl)
 
     # Add HDP_HMMs
     nl, fnl, cl, ml, mtdl = \
@@ -320,7 +302,7 @@ if __name__ == "__main__":
     T = 2000
     T_test = 1000
     K = 100
-    N = 50
+    N = 1
     version = 1
     runnum = 1
 
