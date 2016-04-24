@@ -110,7 +110,6 @@ results_types = ["hmm_K25", "hmm_K45", "hmm_K65",
                  # "hdphmm_scale_alpha_obs2.5",
                  # "hdphmm_scale_alpha_obs5.0",
                  # "hdphmm_scale_alpha_obs10.0"]
-results_list = []
 
 for results_type in results_types:
     results_file = os.path.join(results_dir, results_type + ".pkl.gz")
@@ -119,11 +118,9 @@ for results_type in results_types:
     with gzip.open(results_file, "r") as f:
         results = cPickle.load(f)
 
-    # results_list.append(results)
-
     # print results.name
     compute_predictive_log_likelihood(S_train, S_test, [results])
-    # compute_mse([results], pos_train, S_test, pos_test)
+    compute_mse([results], pos_train, S_test, pos_test)
     print ""
 
     del results
