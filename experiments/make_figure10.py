@@ -51,8 +51,8 @@ def make_figure(results, S_train, pos_train, S_test, pos_test, center, radius, f
     fig = create_figure(figsize=(5,3))
 
     # Plot the centers of the latent states
-    ax = create_axis_at_location(fig, .05, 1.55, 1.15, 1.15, transparent=True)
-    plt.figtext(0.05/5, 2.8/3, "A")
+    ax = create_axis_at_location(fig, .1, 1.7, 1., 1., transparent=True)
+    # plt.figtext(0.05/5, 2.8/3, "A")
     remove_plot_labels(ax)
 
     circle = matplotlib.patches.Circle(xy=[0,0],
@@ -62,7 +62,10 @@ def make_figure(results, S_train, pos_train, S_test, pos_test, center, radius, f
                                        facecolor="white")
     ax.add_patch(circle)
 
-    plt.figtext(1.2/5, 2.8/3, "B")
+    to_plot = np.array([0, 1, 2, 3, 25, 29, 31])
+
+    # plt.figtext(1.2/5, 2.8/3, "B")
+    # for k in xrange(N_used-1,-1,-1):
     for k in xrange(N_used):
         relocc = occupancy[k] / np.float(np.amax(occupancy))
         cd = CircularDistribution(center, radius)
@@ -70,9 +73,18 @@ def make_figure(results, S_train, pos_train, S_test, pos_test, center, radius, f
         # import pdb; pdb.set_trace()
         rm, thm = cd.mean
         xm,ym = convert_polar_to_xy(np.array([[rm, thm]]), [0,0])
+
+        # Figure out color
+        if k in to_plot:
+            k_ind = np.where(to_plot==k)[0][0]
+            color = allcolors[k_ind]
+        else:
+            color = 'k'
+
         ax.plot(xm,ym,'o',
-                 markersize=relocc*6,
-                 markerfacecolor='k',
+                 markersize=3+relocc*4,
+                 markerfacecolor=color,
+                 # markeredgecolor=color,
                  markeredgecolor='k',
                  markeredgewidth=1)
 
@@ -82,92 +94,69 @@ def make_figure(results, S_train, pos_train, S_test, pos_test, center, radius, f
     ax.set_title('All states', fontdict={'fontsize' : 9})
 
     # Plot a figure for each latent state
+    print np.row_stack((np.arange(N_used),
+                        np.array([dd.r for dd in model.dur_distns[:N_used]])))
+    dur = np.arange(1,16)
+    yticks = [0, 0.2, 0.4]
     for k in xrange(3):
-        left = 1.25 * (k+1) + 0.05
+        left = 1.45 + 1.1*k + 0.1
         color = allcolors[k]
-        cmap = white_to_color_cmap(color)
 
         # Plot the locations of this state
-        ax = create_axis_at_location(fig, left, 1.55, 1.15, 1.15, transparent=True)
-        remove_plot_labels(ax)
-        # Plot the empirical location distribution
-        cd = CircularDistribution(center, radius)
-        cd.fit_xy(pos_train[stateseq==k,0], pos_train[stateseq==k,1])
-        cd.plot(ax=ax, cmap=cmap, plot_data=True, plot_colorbar=False)
+        ax = create_axis_at_location(fig, left, 1.8, 1., .9, transparent=True)
+        # remove_plot_labels(ax)
+        # # Plot the empirical location distribution
+        # cd = CircularDistribution(center, radius)
+        # cd.fit_xy(pos_train[stateseq==k,0], pos_train[stateseq==k,1])
+        # cd.plot(ax=ax, cmap=cmap, plot_data=True, plot_colorbar=False)
+        dur_distn = model.dur_distns[to_plot[k]]
+        ax.bar(dur, np.exp(dur_distn.log_pmf(dur)), width=1, color=color)
 
-        ax.set_title('State %d (%.1f%%)' % (k+1, 100.*occupancy[k]),
+        ax.set_xticks([1, 5, 10, 15])
+        ax.set_yticks(yticks)
+        if k > 0:
+            ax.set_yticklabels([])
+        else:
+            ax.set_ylabel("Duration Prob.", labelpad=0)
+        ax.set_xlim(1,16)
+        ax.set_xlabel("Duration", labelpad=0)
+
+
+        ax.set_title('State %d (%.1f%%)' % (to_plot[k]+1, 100.*occupancy[to_plot[k]]),
                      fontdict={'fontsize' : 9})
 
+    # Bottom row
+    for k in xrange(3,7):
+        left = .35 + 1.1*(k-3) + 0.1
+        color = allcolors[k]
 
-    # Bottom: Plot the true and predicted locations for heldout data
-    plt.figtext(0.05/5, 1.55/3, "C")
-    epdf = estimate_pos(model,
-                        S_train, pos_train,
-                        S_test, pos_test,
-                        center, radius)
+        # Plot the locations of this state
+        ax = create_axis_at_location(fig, left, .4, 1., .9, transparent=True)
+        # remove_plot_labels(ax)
+        # # Plot the empirical location distribution
+        # cd = CircularDistribution(center, radius)
+        # cd.fit_xy(pos_train[stateseq==k,0], pos_train[stateseq==k,1])
+        # cd.plot(ax=ax, cmap=cmap, plot_data=True, plot_colorbar=False)
+        dur_distn = model.dur_distns[to_plot[k]]
+        ax.bar(dur, np.exp(dur_distn.log_pmf(dur)), width=1, color=color)
 
-    # Compute the mean trajectory
-    mean_location = np.zeros_like(pos_test)
-    for t in range(T_test):
-        cd = CircularDistribution(center, radius, pdf=epdf[t,:])
-        mean_location[t,:] = convert_polar_to_xy(np.atleast_2d(cd.mean), center)
+        ax.set_xticks([1, 5, 10, 15])
+        ax.set_yticks(yticks)
+        if k > 3:
+            ax.set_yticklabels([])
+        else:
+            ax.set_ylabel("Duration Prob.", labelpad=0)
+        ax.set_xlim(1,16)
+        ax.set_xlabel("Duration", labelpad=0)
 
-    # Convert estimates to x,y and compute mean squared error
-    sqerr = np.sqrt((mean_location - pos_test)**2).mean(axis=1)
-    mse = sqerr.mean(axis=0)
-    stdse = sqerr.std(axis=0)
-    print "MSE: %f \pm %f" % (mse, stdse)
 
-    ax_y = create_axis_at_location(fig, 0.6, 0.4, 3.8, 0.5, box=True, ticks=True)
-    ax_y.plot(t_test, pos_test[:,1] - center[1], '-k', lw=1)
-    ax_y.plot(t_test, mean_location[:,1] - center[1], '-', color=allcolors[1])
+        ax.set_title('State %d (%.1f%%)' % (to_plot[k]+1, 100.*occupancy[to_plot[k]]),
+                     fontdict={'fontsize' : 9})
 
-    ax_y.set_ylabel('$y(t)$ [cm]', fontsize=9)
-    ax_y.set_ylim([-radius,radius])
-    ax_y.set_xlabel('$t$ [s]', fontsize=9)
-    ax_y.set_xlim(0,T_test*0.25)
-    ax_y.tick_params(axis='both', which='major', labelsize=9)
-
-    ax_x = create_axis_at_location(fig, 0.6, 1., 3.8, 0.5, box=True, ticks=True)
-    ax_x.plot(t_test, pos_test[:,0] - center[0], '-k', lw=1)
-    ax_x.plot(t_test, mean_location[:,0] - center[0], '-', color=allcolors[1])
-    ax_x.set_ylabel('$x(t)$ [cm]', fontsize=9)
-    ax_x.set_ylim([-radius,radius])
-    ax_x.set_xticks(ax_y.get_xticks())
-    ax_x.set_xticklabels([])
-    ax_x.tick_params(axis='both', which='major', labelsize=9)
-    ax_x.set_xlim(0,T_test*0.25)
-
-    fig.savefig(os.path.join(figdir, 'figure5.pdf'))
-    fig.savefig(os.path.join(figdir, 'figure5.png'))
+    fig.savefig(os.path.join(figdir, 'figure10.pdf'))
+    fig.savefig(os.path.join(figdir, 'figure10.png'), dpi=300)
 
     plt.show()
-
-
-def estimate_pos(model, S_train, pos_train, S_test, pos_test, center, radius):
-    # Compute the marginal distribution over states at each of the test time steps
-    expected_states_test = model.heldout_state_marginals(S_test)
-
-    assert expected_states_test.shape[1] == model.num_states
-    T,K = expected_states_test.shape
-
-    # Compute the empirical location distributions for each of the latent states
-    cds = []
-    states_obj = model.states_list[0]
-    state_seq = states_obj.stateseq
-
-    for k in range(K):
-        cd = CircularDistribution(center, radius)
-        cd.fit_xy(pos_train[state_seq == k, 0], pos_train[state_seq == k, 1])
-        cds.append(cd)
-
-    epdf = np.zeros((T,) + cds[0].pdf.shape)
-    for t in range(T):
-        # Get the average of the location distributions at time t
-        assert np.allclose(expected_states_test[t,:].sum(), 1.0)
-        epdf[t,:,:] = np.array([expected_states_test[t,k]*cds[k].pdf for k in range(K)]).sum(0)
-
-    return epdf
 
 def load_hipp_data(dataname="hipp_2dtrack_a", trainfrac=0.8):
     raw_data = loadmat("data/%s.mat" % dataname)
@@ -199,7 +188,7 @@ if __name__ == "__main__":
     # Load results
     runnum = 1
     results_dir = os.path.join("results", dataset, "run%03d" % runnum)
-    results_type = "hdphmm_scale"
+    results_type = "hdphsmm_scale"
     results_file = os.path.join(results_dir, results_type + ".pkl.gz")
     with gzip.open(results_file, "r") as f:
         results = cPickle.load(f)

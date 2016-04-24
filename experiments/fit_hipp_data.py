@@ -179,6 +179,22 @@ def make_hdphmm_models(N, S_train, K_max=100, alpha_obs=1.0, beta_obs=1.0):
     hmm_list.append(hmm)
     method_list.append(fit)
 
+    # Standard HDP-HSMM (Scale resampling)
+    names_list.append("HDP-HSMM (Scale)")
+    fnames_list.append("hdphsmm_scale")
+    color_list.append(allcolors[1])
+    hmm = \
+        pyhsmm_spiketrains.models.PoissonIntNegBinHDPHSMM(
+            N=N, K_max=K_max,
+            alpha_a_0=5.0, alpha_b_0=1.0,
+            gamma_a_0=5.0, gamma_b_0=1.0,
+            init_state_concentration=1.0,
+            alpha_obs=alpha_obs,
+            beta_obs=beta_obs)
+    hmm.add_data(S_train)
+    hmm_list.append(hmm)
+    method_list.append(fit)
+
     # Vary the hyperparameters of the scale resampling model
     for alpha_a_0 in [1.0, 5.0, 10.0, 100.0]:
         names_list.append("HDP-HMM (Scale)")

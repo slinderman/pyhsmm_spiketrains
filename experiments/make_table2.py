@@ -97,7 +97,12 @@ N, S_train, pos_train, S_test, pos_test, center, radius = \
 # Load results
 runnum = 1
 results_dir = os.path.join("results", dataset, "run%03d" % runnum)
-results_types = ["hmm_K25", "hmm_K45", "hmm_K65", "hdphmm_scale", "hdphmm_hmc", "hdphmm_eb", "hdphmm_vb"]
+results_types = ["hmm_K25", "hmm_K45", "hmm_K65",
+                 "hdphmm_scale",
+                 "hdphmm_hmc",
+                 "hdphmm_eb",
+                 "hdphmm_vb",
+                 "hdphsmm_scale"]
                  # "hdphmm_scale_alpha_obs0.1",
                  # "hdphmm_scale_alpha_obs0.5",
                  # "hdphmm_scale_alpha_obs1.0",
@@ -109,7 +114,8 @@ results_list = []
 
 for results_type in results_types:
     results_file = os.path.join(results_dir, results_type + ".pkl.gz")
-    print "Loading ", results_file
+    # print "Loading ", results_file
+    print "Model: ", results_type
     with gzip.open(results_file, "r") as f:
         results = cPickle.load(f)
 
@@ -117,7 +123,7 @@ for results_type in results_types:
 
     # print results.name
     compute_predictive_log_likelihood(S_train, S_test, [results])
-    compute_mse([results], pos_train, S_test, pos_test)
+    # compute_mse([results], pos_train, S_test, pos_test)
     print ""
 
     del results

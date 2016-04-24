@@ -155,6 +155,10 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
         perm_obs_distns = [self.obs_distns[i] for i in perm]
         self.obs_distns = perm_obs_distns
 
+        if hasattr(self, "dur_distns"):
+            perm_dur_distns = [self.dur_distns[i] for i in perm]
+            self.dur_distns = perm_dur_distns
+
         # Permute the transition matrix
         perm_A = self.trans_distn.trans_matrix[np.ix_(perm, perm)]
         self.trans_distn.trans_matrix = perm_A
@@ -522,4 +526,34 @@ class PoissonHDPHSMM(_PoissonHSMMMixin, pyhsmm.models.WeakLimitHDPHSMM):
             **kwargs)
 
 
+class PoissonIntNegBinHDPHSMM(_PoissonIntNegBinHSMMMixin, pyhsmm.models.WeakLimitHDPHSMM):
+    def __init__(self, N, K_max, alpha_obs=1.0, beta_obs=1.0,
+                 r_max=10, alpha_dur=10.0, beta_dur=1.0,
+                 alpha_a_0=10.0, alpha_b_0=1.0,
+                 gamma_a_0=10.0, gamma_b_0=1.0,
+                 init_state_concentration=1.0,
+                 **kwargs):
+
+        # Instantiate Poisson duration distributions
+        duration_distns = [
+            pyhsmm.distributions.NegativeBinomialIntegerRDuration(
+                r_discrete_distn=np.ones(r_max), alpha_0=alpha_dur, beta_0=beta_dur)
+            for _ in range(K_max)]
+
+
+        super(PoissonIntNegBinHDPHSMM, self).__init__(
+            obs_distns=_make_obs_distns(K_max, N, alpha_obs, beta_obs),
+            dur_distns=duration_distns,
+            alpha_a_0=alpha_a_0, alpha_b_0=alpha_b_0,
+            gamma_a_0=gamma_a_0, gamma_b_0=gamma_b_0,
+            init_state_concentration=init_state_concentration,
+            **kwargs)
+
+    def add_data(self,data,stateseq=None,trunc=30,
+        right_censoring=True,left_censoring=False,**kwargs):
+        return super(PoissonIntNegBinHDPHSMM, self).\
+            add_data(data, stateseq=stateseq, trunc=trunc,
+                     right_censoring=right_censoring,
+                     left_censoring=left_censoring,
+                     **kwargs)
 
