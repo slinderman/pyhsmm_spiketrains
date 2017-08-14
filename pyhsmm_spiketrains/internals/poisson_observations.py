@@ -1,10 +1,6 @@
 from pybasicbayes.abstractions import Collapsed
 from pybasicbayes.distributions import ProductDistribution, Poisson
 
-from numpy import arange, array, exp, log, isscalar
-from scipy.special import gammaln, psi
-from hips.inference.hmc import hmc
-
 import numpy as np
 
 # Make a product distribution that implements collapsed gibbs sampling
@@ -16,13 +12,13 @@ class PoissonVector(ProductDistribution, Collapsed):
         :return:
         """
         self.N = N
-        if isscalar(alpha_0):
+        if np.isscalar(alpha_0):
             alpha_0 = alpha_0*np.ones(N)
         elif isinstance(alpha_0, np.ndarray):
             assert len(alpha_0) == N
             alpha_0 = alpha_0
 
-        if isscalar(beta_0):
+        if np.isscalar(beta_0):
             beta_0 = beta_0*np.ones(N)
         elif isinstance(beta_0, np.ndarray):
             assert len(beta_0) == N
@@ -51,7 +47,9 @@ class PoissonVector(ProductDistribution, Collapsed):
         return alpha_0, beta_0
 
     @hypers.setter
-    def hypers(self, (alpha_0, beta_0)):
+    def hypers(self, val):
+        assert isinstance(val, tuple) and len(val) == 2
+        alpha_0, beta_0 = val
         assert len(alpha_0) == self.N
         assert len(beta_0) == self.N
 
@@ -74,7 +72,7 @@ class PoissonVector(ProductDistribution, Collapsed):
 
     def resample(self,data=[],n=None,tots=None):
         # Resample rates
-        if None not in (n,tots):
+        if None not in (n, tots):
             for p, tot in zip(self.poissons,tots):
                 p.resample(stats=(n,tot))
         else:

@@ -18,11 +18,24 @@ from pyhsmm_spiketrains.internals.utils \
 
 ### Special case the Poisson Mixture model
 class PoissonLabels(pybasicbayes.models.Labels):
+    def __init__(self, model, data=None, mask=None, N=None, z=None,
+                 initialize_from_prior=True):
+
+        super(PoissonLabels, self).__init__(
+            model, data=data, N=N, z=z,
+            initialize_from_prior=initialize_from_prior)
+
+        if mask is None:
+            self.mask = np.ones(data.shape, dtype=np.int32)
+        else:
+            assert mask.shape == data.shape and mask.dtype == np.int32
+            self.mask = mask
+
     def _compute_scores(self):
-        data, K = self.data, len(self.components)
+        data, mask, K = self.data, self.mask, len(self.components)
         scores = np.zeros((data.shape[0],K))
         lmbdas = np.array([o.lmbdas for o in self.components])
-        fast_likelihoods(self.gammalns, lmbdas, data, scores)
+        fast_likelihoods(self.gammalns, lmbdas, data, mask, scores)
 
         # scores2 = np.zeros_like(scores)
         # for idx, c in enumerate(self.components):
@@ -45,38 +58,45 @@ class PoissonLabels(pybasicbayes.models.Labels):
     def obs_stats(self):
         ns = np.zeros(self.N, dtype='int')
         tots = np.zeros((self.N, self.data.shape[1]), dtype='int')
-        fast_statistics(self.z, self.data, ns, tots)
+        fast_statistics(self.z, self.data, self.mask, ns, tots)
         return ns, tots
 
-class _PoissonMixtureMixin(pybasicbayes.models.Mixture):
-    _labels_class = PoissonLabels
-
-    def resample_components(self, num_procs=None):
-        if len(self.labels_list) > 0:
-            ns, totss = map(sum,zip(*[s.obs_stats for s in self.labels_list]))
-
-            for c, n, tots in zip(self.components, ns, totss):
-                c.resample(n=n, tots=tots)
-            self._clear_caches()
-
 ### Special case the Poisson states to use Cython-ized stat calculations
-class PoissonStates(pyhsmm.internals.hmm_states._StatesBase):
+class _PoissonStatesMixin(object):
+    def __init__(self, model, T=None, data=None, mask=None, stateseq=None,
+                 generate=True, initialize_from_prior=True, fixed_stateseq=False):
+
+        super(_PoissonStatesMixin, self).__init__(
+            model, T=T, data=data, stateseq=stateseq, generate=generate,
+            initialize_from_prior=initialize_from_prior,
+            fixed_stateseq=fixed_stateseq)
+
+        if mask is None:
+            self.mask = np.ones((self.T, self.N), dtype=np.int32)
+        else:
+            assert mask.shape == (self.T, self.N) and mask.dtype == bool
+            self.mask = mask.astype(np.int32)
+
+    @property
+    def N(self):
+        return self.obs_distns[0].N
+
     ### speeding up likelihood calculation
     @property
     def aBl(self):
         if self._aBl is None:
             gammalns = self.gammalns
             lmbdas = np.array([o.lmbdas for o in self.obs_distns])
-            data = np.array(self.data,copy=False) # self.data is not a plain ndarray
+            data = np.array(self.data, copy=False) # self.data is not a plain ndarray
 
             self._aBl = np.zeros((self.T,self.num_states))
-            fast_likelihoods(gammalns,lmbdas,data,self._aBl)
+            fast_likelihoods(gammalns, lmbdas, data, self.mask, self._aBl)
 
         return self._aBl
 
     @property
     def slow_aBl(self):
-        return super(PoissonHMMStates,self).aBl
+        return super(_PoissonStatesMixin, self).aBl
 
     @property
     def gammalns(self):
@@ -87,10 +107,11 @@ class PoissonStates(pyhsmm.internals.hmm_states._StatesBase):
     ### speeding up obs resampling
     @property
     def obs_stats(self):
-        ns = np.zeros(self.num_states,dtype='int')
-        tots = np.zeros((self.num_states,self.data.shape[1]),dtype='int')
-        fast_statistics(self.stateseq,self.data,ns,tots)
-        return (ns,tots)
+        ns = np.zeros(self.num_states, dtype='int')
+        tots = np.zeros((self.num_states, self.data.shape[1]), dtype='int')
+        data = np.array(self.data, copy=False)  # self.data is not a plain ndarray
+        fast_statistics(self.stateseq, data, self.mask, ns, tots)
+        return ns, tots
 
     @property
     def rate(self):
@@ -99,13 +120,28 @@ class PoissonStates(pyhsmm.internals.hmm_states._StatesBase):
         assert rate.shape == (self.T, self.obs_distns[0].N)
         return rate
 
-class PoissonHMMStates(PoissonStates, pyhsmm.models.HMM._states_class):
+    # Heldout log likelihoods
+    def heldout_log_likelihood(self):
+        gammalns = self.gammalns
+        lmbdas = np.array([o.lmbdas for o in self.obs_distns])
+        data = np.array(self.data, copy=False)  # self.data is not a plain ndarray
+
+        # Compute expected states given observed data
+        self.E_step()
+
+        # Compute the heldout log likelihood for each latent state
+        heldout_aBl = np.zeros((self.T, self.num_states))
+        fast_likelihoods(gammalns, lmbdas, data, 1 - self.mask, heldout_aBl)
+        return np.sum(heldout_aBl * self.expected_states)
+
+
+class PoissonHMMStates(_PoissonStatesMixin, pyhsmm.models.HMM._states_class):
     pass
 
-class PoissonHSMMStates(PoissonStates, pyhsmm.models.HSMM._states_class):
+class PoissonHSMMStates(_PoissonStatesMixin, pyhsmm.models.HSMM._states_class):
     pass
 
-class PoissonIntNegBinHSMMStates(PoissonStates, pyhsmm.models.HSMMIntNegBin._states_class):
+class PoissonIntNegBinHSMMStates(_PoissonStatesMixin, pyhsmm.models.HSMMIntNegBin._states_class):
     pass
 
 ### Special case resampling Poisson observation distributions
@@ -127,6 +163,10 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
     @property
     def A(self):
         return self.trans_distn.trans_matrix
+
+    # Likelihoods
+    def heldout_log_likelihood(self):
+        return sum(s.heldout_log_likelihood() for s in self.states_list)
 
     # Helper function
     def relabel_by_usage(self):
@@ -169,8 +209,8 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
         if len(self.states_list) > 0:
             ns, totss = map(sum,zip(*[s.obs_stats for s in self.states_list]))
 
-            for o, n, tots in zip(self.obs_distns,ns,totss):
-                o.resample(n=n,tots=tots)
+            for o, n, tots in zip(self.obs_distns, ns, totss):
+                o.resample(n=n, tots=tots)
             self._clear_caches()
         else:
             super(_PoissonMixin,self).resample_obs_distns()
@@ -265,7 +305,7 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
         # Update the hypers for each cell
         a_f = a_0.copy()
         b_f = b_0.copy()
-        for n in xrange(self.obs_distns[0].N):
+        for n in range(self.obs_distns[0].N):
             nlp = lambda x: nlpc(x,n)
             gnlp = lambda x: gnlpc(x,n)
 
@@ -303,7 +343,7 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
         c, d = 1., 1.
         L = np.array([o.lmbdas for o in self.obs_distns])
         used = self.state_usages > 0
-        for n in xrange(N):
+        for n in range(N):
             # Rates of neuron n over all states
             Ln = L[:,n]
 
@@ -366,33 +406,57 @@ class PoissonStatic(object):
     def __init__(self, N):
         self.N = N
         self.data_list = []
+        self.mask_list = []
         self.lmbda = np.zeros(N)
 
-    def add_data(self, S):
+    def add_data(self, S, mask=None):
         assert S.ndim == 2 and S.shape[1] == self.N
+
+        if mask is None:
+            mask = np.ones_like(S, dtype=bool)
+        else:
+            assert mask.shape == S.shape and mask.dtype == bool
+
         self.data_list.append(S)
+        self.mask_list.append(mask)
 
     def max_likelihood(self):
         S = 0.0
         T = 0.0
-        for data in self.data_list:
-            S += data.sum(0)
-            T += data.shape[0]
+        for data, mask in zip(self.data_list, self.mask_list):
+            S += (data * mask).sum(0)
+            T += mask.sum(0)
         self.lmbda = S / float(T)
 
-    def log_likelihood(self, S_test):
+    def log_likelihood(self, S, mask=None):
+        if mask is None:
+            mask = np.ones_like(S, dtype=bool)
+        else:
+            assert mask.shape == S.shape and mask.dtype == bool
+
         lmbda = self.lmbda
-        homog_ll = -gammaln(S_test+1).sum() \
-                   - (lmbda * S_test.shape[0]).sum() \
-                   + (S_test * np.log(lmbda)).sum()
+        homog_ll = (-gammaln(S + 1) * mask).sum() \
+                   - (lmbda * mask).sum() \
+                   + (S * np.log(lmbda) * mask).sum()
         return homog_ll
 
-class PoissonMixture(_PoissonMixtureMixin, pybasicbayes.models.Mixture):
+class PoissonMixture(pybasicbayes.models.Mixture):
+
+    _labels_class = PoissonLabels
+
     def __init__(self, N, K, alpha_obs=1.0, beta_obs=1.0, **kwargs):
         super(PoissonMixture, self).__init__(
             components=_make_obs_distns(K, N, alpha_obs, beta_obs), **kwargs)
 
         # TODO: Implement component hyperparameter resampling
+
+    def resample_components(self, num_procs=None):
+        if len(self.labels_list) > 0:
+            ns, totss = map(sum, zip(*[s.obs_stats for s in self.labels_list]))
+
+            for c, n, tots in zip(self.components, ns, totss):
+                c.resample(n=n, tots=tots)
+            self._clear_caches()
 
     def heldout_log_likelihood(self, test_data):
         return self.log_likelihood(test_data)
