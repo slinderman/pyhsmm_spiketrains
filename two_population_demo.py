@@ -23,7 +23,7 @@ N_iter = 500    # Number of iterations of Gibbs sampling
 # Simulate from an HMM with a known transition matrix
 true_A = np.eye(K) + 0.25*np.random.rand(K,K)
 true_A /= true_A.sum(axis=1)[:,None]
-true_hmm = pyhsmm_spiketrains.models.PoissonHMM(N=N1, K=K, trans_matrix=true_A)
+true_hmm = pyhsmm_spiketrains.models.PoissonHMM(N=N1+N2, K=K, trans_matrix=true_A)
 
 # Generate training data and testing data
 S_train, _ = true_hmm.generate(T_train, keep=True)
@@ -41,7 +41,7 @@ ll_S1te_true = true_hmm.log_likelihood(S_test, mask=M1_test)
 ll_S2te_given_S1te_true = true_hmm.predictive_log_likelihood(S_test, mask=M1_test)
 
 print("Fitting naive model on population 1 alone")
-naive_hmm = pyhsmm_spiketrains.models.PoissonHDPHMM(N=N1+N2, K_max=100)
+naive_hmm = pyhsmm_spiketrains.models.PoissonHDPHMM(N=N1, K_max=100)
 naive_hmm.add_data(S1_train)
 for itr in progprint_xrange(N_iter):
     naive_hmm.resample_model()
