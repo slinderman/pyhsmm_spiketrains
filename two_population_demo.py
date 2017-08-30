@@ -27,9 +27,9 @@ true_hmm = pyhsmm_spiketrains.models.PoissonHMM(N=N1+N2, K=K, trans_matrix=true_
 
 # Generate training data and testing data
 S_train, _ = true_hmm.generate(T_train, keep=True)
-S1_train, S2_train = S_train[:, :N1].copy('C'), S_train[N1:].copy('C')
+S1_train, S2_train = S_train[:, :N1].copy('C'), S_train[:, N1:].copy('C')
 S_test, _ = true_hmm.generate(T_test, keep=True)
-S1_test, S2_test = S_test[:, :N1].copy('C'), S_test[N1:].copy('C')
+S1_test, S2_test = S_test[:, :N1].copy('C'), S_test[:, N1:].copy('C')
 
 # Mask off the activity from population 2
 M1_train = np.hstack([np.ones((T_train, N1), dtype=bool), np.zeros((T_train, N2), dtype=bool)])
