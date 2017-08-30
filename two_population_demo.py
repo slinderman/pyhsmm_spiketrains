@@ -23,7 +23,7 @@ N_iter = 500    # Number of iterations of Gibbs sampling
 # Simulate from an HMM with a known transition matrix
 true_A = np.eye(K) + 0.25*np.random.rand(K,K)
 true_A /= true_A.sum(axis=1)[:,None]
-true_hmm = pyhsmm_spiketrains.models.PoissonHMM(N=N1+N2, K=K, trans_matrix=true_A)
+true_hmm = pyhsmm_spiketrains.models.PoissonHMM(N=N1, K=K, trans_matrix=true_A)
 
 # Generate training data and testing data
 S_train, _ = true_hmm.generate(T_train, keep=True)
