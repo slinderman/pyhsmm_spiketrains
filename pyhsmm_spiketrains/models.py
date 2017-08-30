@@ -120,19 +120,24 @@ class _PoissonStatesMixin(object):
         assert rate.shape == (self.T, self.obs_distns[0].N)
         return rate
 
-    # Heldout log likelihoods
-    def heldout_log_likelihood(self):
-        gammalns = self.gammalns
-        lmbdas = np.array([o.lmbdas for o in self.obs_distns])
-        data = np.array(self.data, copy=False)  # self.data is not a plain ndarray
+    def predictive_log_likelihood(self):
+        """
+        Compute the log likelihood of the masked data given the observed data,
+        marginalizing out the latent state sequence.
 
-        # Compute expected states given observed data
-        self.E_step()
+        p(y_test | y_train) = p(y_test, y_train) / p(y_train)
+         = [\sum_z p(y_test, y_train, z)] / [\sum_z p(y_train, z)]
+        """
+        mask = self.mask.copy()
+        self.mask = np.ones_like(self.mask)
+        self.clear_caches()
+        pll = self.log_likelihood()
 
-        # Compute the heldout log likelihood for each latent state
-        heldout_aBl = np.zeros((self.T, self.num_states))
-        fast_likelihoods(gammalns, lmbdas, data, 1 - self.mask, heldout_aBl)
-        return np.sum(heldout_aBl * self.expected_states)
+        self.mask = mask
+        self.clear_caches()
+        pll -= self.log_likelihood()
+
+        return pll
 
 
 class PoissonHMMStates(_PoissonStatesMixin, pyhsmm.models.HMM._states_class):
@@ -165,8 +170,13 @@ class _PoissonMixin(pyhsmm.models._HMMGibbsSampling):
         return self.trans_distn.trans_matrix
 
     # Likelihoods
-    def heldout_log_likelihood(self):
-        return sum(s.heldout_log_likelihood() for s in self.states_list)
+    def predictive_log_likelihood(self, data=None, **kwargs):
+        if data is None:
+            return sum(s.predictive_log_likelihood() for s in self.states_list)
+        else:
+            self.add_data(data, **kwargs)
+            s = self.states_list.pop()
+            return s.predictive_log_likelihood()
 
     # Helper function
     def relabel_by_usage(self):
